@@ -15,7 +15,7 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
     text: '© ',
     links: [
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: ' | CyclOSM', url: 'https://www.cyclosm.org/' }
+      { text: 'CyclOSM', url: 'https://www.cyclosm.org/' }
     ]
   },
   STANDARD: {
@@ -28,29 +28,29 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
     text: '© ',
     links: [
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: ' | Humanitarian OSM Team', url: 'https://www.hotosm.org/' }
+      { text: 'Humanitarian OSM Team', url: 'https://www.hotosm.org/' }
     ]
   },
   OPENTOPOMAP: {
     text: '© ',
     links: [
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: ' | SRTM', url: 'https://www2.jpl.nasa.gov/srtm/' },
-      { text: ' | OpenTopoMap', url: 'https://opentopomap.org/' }
+      { text: 'SRTM', url: 'https://www2.jpl.nasa.gov/srtm/' },
+      { text: 'OpenTopoMap', url: 'https://opentopomap.org/' }
     ]
   },
   CARTODARK: {
     text: '© ',
     links: [
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: ' | CARTO', url: 'https://carto.com/attributions' }
+      { text: 'CARTO', url: 'https://carto.com/attributions' }
     ]
   },
   CARTOVOYAGER: {
     text: '© ',
     links: [
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: ' | CARTO', url: 'https://carto.com/attributions' }
+      { text: 'CARTO', url: 'https://carto.com/attributions' }
     ]
   },
   SATELLITE: {
@@ -69,7 +69,8 @@ const AttributionOverlay: React.FC<AttributionOverlayProps> = ({ mapLayer }) => 
       <div className="flex items-center text-[9px] font-mono text-zinc-300 tracking-wide">
         <span>{attribution.text}</span>
         {attribution.links.map((link, index) => (
-          <React.Fragment key={index}>
+          <React.Fragment key={link.url}>
+            {index > 0 && <span className="mx-1">|</span>}
             <a
               href={link.url}
               target="_blank"
