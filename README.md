@@ -1,5 +1,7 @@
 # Projection Lab
 
+![Torus Projection](Torus%20Projection.png)
+
 An interactive 3D map projection playground exploring how different cartographic projections transform geographical data. Built with React, Three.js, and TypeScript.
 This project was basically entirely programmed by AI.
 
