@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MapSettings, MapLayer } from '../types';
+import AttributionOverlay from './AttributionOverlay';
 
 interface MapCanvasProps {
   settings: MapSettings;
@@ -476,12 +477,12 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         vec3 newVec = normalize(vPosition);
         vec3 viewDirection = normalize(newVec);
         float fresnel = dot(vNormal, viewDirection);
-        fresnel = pow(abs(fresnel), 1.5);
+          fresnel = pow(abs(fresnel), 1.2);
         fresnel = 1.0 - fresnel;
 
-        // Blue atmosphere color with glow
-        vec3 color = vec3(0.2, 0.4, 0.8) * fresnel * 1.5;
-        float alpha = fresnel * 0.6;
+          // Bright cyan-blue atmosphere glow
+          vec3 color = vec3(0.3, 0.6, 1.0) * fresnel * 2.5;
+          float alpha = fresnel * 0.8;
 
         gl_FragColor = vec4(color, alpha);
       }
@@ -497,7 +498,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
     const atmosphereGeometry = new THREE.PlaneGeometry(1, 1, 400, 400);
     const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-    atmosphereMesh.scale.set(5.3, 5.3, 5.3); // Slightly larger than main mesh
+    atmosphereMesh.scale.set(5.5, 5.5, 5.5); // Slightly larger than main mesh
+    atmosphereMesh.visible = false; // Hidden by default, shown only for satellite + 3D
     scene.add(atmosphereMesh);
     atmosphereMeshRef.current = atmosphereMesh;
     console.log('✓ Atmosphere layer added');
@@ -572,6 +574,13 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         m.uniforms.uDiscT.value = easeInOutCubic(progressRef.current.disc);
         m.uniforms.uTorusT.value = progressRef.current.torus;
         m.uniforms.uShowGrid.value = settingsRef.current.showGrid ? 1.0 : 0.0;
+        
+        // Show atmosphere only for satellite map + 3D projections
+        const is3D = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
+        const isSatellite = settingsRef.current.mapLayer === 'SATELLITE';
+        if (atmosphereMeshRef.current) {
+          atmosphereMeshRef.current.visible = is3D && isSatellite;
+        }
       }
 
       controls.update();
@@ -608,6 +617,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
                 </div>
             </div>
         )}
+        <AttributionOverlay mapLayer={settings.mapLayer} sidebarOffset={sidebarOffset} />
     </div>
   );
 };
