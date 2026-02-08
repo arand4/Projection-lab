@@ -34,6 +34,7 @@ const App: React.FC = () => {
     zoom: 1.0,
     rotation: { x: 0, y: 0 },
     showGrid: true,
+    showAtmosphere: true,
     viewMode: 'SPHERE',
     mapLayer: 'SATELLITE'
   });
@@ -59,6 +60,7 @@ const App: React.FC = () => {
     });
   };
   const toggleGrid = () => setSettings(s => ({ ...s, showGrid: !s.showGrid }));
+  const toggleAtmosphere = () => setSettings(s => ({ ...s, showAtmosphere: !s.showAtmosphere }));
 
   const handle3DTransition = (target3D: ViewMode) => {
     const currentMode = settings.viewMode;
@@ -177,10 +179,15 @@ const App: React.FC = () => {
 
             <div className="space-y-4">
               <label className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em] flex items-center gap-2"><Wind size={12} /> Visualization</label>
-              
+
               <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-2"><GridIcon size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Geo Grid</span></div>
                 <button onClick={toggleGrid} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.showGrid ? 'bg-emerald-600 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.showGrid ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+              </div>
+
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2"><Cloud size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Atmosphere</span></div>
+                <button onClick={toggleAtmosphere} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.viewMode === 'SPHERE' && settings.showAtmosphere ? 'bg-blue-600 border-blue-400 shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.viewMode === 'SPHERE' && settings.showAtmosphere ? 'translate-x-5' : 'translate-x-0'}`} /></button>
               </div>
             </div>
 

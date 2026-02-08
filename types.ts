@@ -23,6 +23,7 @@ export interface MapSettings {
   zoom: number;
   rotation: Vector2;
   showGrid: boolean;
+  showAtmosphere: boolean;
   viewMode: ViewMode;
   mapLayer: MapLayer;
 }

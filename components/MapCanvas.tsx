@@ -128,7 +128,9 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
   const lastModeRef = useRef<string>('SPHERE');
   const [loading, setLoading] = useState(true);
-  const atmosphereMeshRef = useRef<THREE.Mesh | null>(null);
+  const atmosphereLayersRef = useRef<THREE.Mesh[]>([]);
+  const atmosphereFadeRef = useRef<number>(settings.viewMode === 'SPHERE' ? 1.0 : 0.0);
+  const allowMorphRef = useRef<boolean>(true);
 
   // Create a placeholder texture
   const createPlaceholderTexture = (): THREE.CanvasTexture => {
@@ -456,15 +458,141 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     console.log('✓ Initial mode:', settingsRef.current.viewMode);
     console.log('✓ Initial map layer:', settingsRef.current.mapLayer);
 
-    // Create atmosphere shader
+    // Create atmosphere shader that follows the same geometry transformations
     const atmosphereVertexShader = `
+      varying vec2 vUv;
       varying vec3 vNormal;
       varying vec3 vPosition;
 
+      uniform float uTorusT;
+      uniform float uSphereT;
+      uniform float uCylinderT;
+      uniform float uConeT;
+      uniform float uDiscT;
+      uniform float uMercatorT;
+      uniform float uGallPetersT;
+      uniform float uSinusoidalT;
+      uniform float uRobinsonT;
+      uniform float uInfiniteT;
+
+      #define PI 3.14159265359
+
+      float ease(float t) {
+        return t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
+      }
+
+      const float robX[19] = float[19](1.0, 0.9986, 0.9954, 0.99, 0.9822, 0.973, 0.963, 0.951, 0.9394, 0.9264, 0.911, 0.8935, 0.8735, 0.85, 0.8235, 0.793, 0.758, 0.7185, 0.5322);
+      const float robY[19] = float[19](0.0, 0.062, 0.124, 0.186, 0.248, 0.31, 0.372, 0.434, 0.4958, 0.5571, 0.6176, 0.6769, 0.7346, 0.7903, 0.8435, 0.8936, 0.9394, 0.9761, 1.0);
+
+      vec2 getRobinsonParams(float latDeg) {
+        float aLat = abs(latDeg);
+        float indexF = aLat / 5.0;
+        int i = int(floor(indexF));
+        i = clamp(i, 0, 17);
+        float t = fract(indexF);
+        float x = mix(robX[i], robX[i+1], t);
+        float y = mix(robY[i], robY[i+1], t);
+        if (latDeg < 0.0) y = -y;
+        return vec2(x, y);
+      }
+
       void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vUv = uv;
+
+        float sphereRadius = 10.0;
+        float planeW = 2.0 * PI * sphereRadius;
+        float hPC = PI * sphereRadius;
+        float hM = planeW;
+        float hGP = 2.0 * sphereRadius;
+        float hInf = planeW;
+        float hRob = planeW / 1.97;
+
+        float targetHeight = hPC;
+        targetHeight = mix(targetHeight, hM, uMercatorT);
+        targetHeight = mix(targetHeight, hGP, uGallPetersT);
+        targetHeight = mix(targetHeight, hInf, uInfiniteT);
+        targetHeight = mix(targetHeight, hRob, uRobinsonT);
+
+        float stdLat = (uv.y - 0.5) * PI;
+        float geoWidthFactor = mix(1.0, cos(stdLat), uSinusoidalT);
+
+        vec3 pos2DDefault = vec3((uv.x - 0.5) * planeW * geoWidthFactor, (uv.y - 0.5) * targetHeight, 0.0);
+
+        vec2 robParams = getRobinsonParams((uv.y - 0.5) * 180.0);
+        float robXFactor = 0.8487 * robParams.x;
+        float robYVal = 1.3523 * robParams.y * sphereRadius;
+        vec3 posRobinson = vec3((uv.x - 0.5) * planeW * robXFactor, robYVal, 0.0);
+        vec3 pos2D = mix(pos2DDefault, posRobinson, uRobinsonT);
+
+        float lon = (uv.x - 0.5) * 2.0 * PI;
+        vec3 posCylinder = vec3(sphereRadius * sin(lon), (uv.y - 0.5) * targetHeight, sphereRadius * cos(lon));
+        float coneRadius = sphereRadius * (1.1 - uv.y);
+        vec3 posCone = vec3(coneRadius * sin(lon), (uv.y - 0.5) * targetHeight, coneRadius * cos(lon));
+        float discRadius = sphereRadius * 2.0 * (1.0 - uv.y);
+        vec3 posDisc = vec3(discRadius * sin(lon), 0.0, discRadius * cos(lon));
+
+        float stdLon = (uv.x - 0.5) * 2.0 * PI;
+        float phiTrans = (uv.y - 0.5) * 2.0 * PI;
+        float thetaTrans = (uv.x - 0.5) * PI;
+        vec3 pSph = vec3(cos(stdLat) * sin(stdLon), sin(stdLat), cos(stdLat) * cos(stdLon));
+        vec3 pSphTrans = vec3(sin(thetaTrans), cos(thetaTrans) * sin(phiTrans), cos(thetaTrans) * cos(phiTrans));
+        vec3 posSphere = mix(pSph, pSphTrans, uInfiniteT) * sphereRadius;
+
+        vec3 pos2D_Rect = vec3((uv.x - 0.5) * planeW, (uv.y - 0.5) * targetHeight, 0.0);
+        float r_tube = targetHeight / (2.0 * PI);
+        float R_hole = 25.0;
+        float tRoll = ease(clamp(uTorusT * 2.0, 0.0, 1.0));
+        float rollAngle = (uv.y - 0.5) * 2.0 * PI;
+        vec3 pRolled = vec3(pos2D_Rect.x, mix(pos2D_Rect.y, r_tube * sin(rollAngle), tRoll), mix(pos2D_Rect.z, r_tube * (cos(rollAngle) - 1.0), tRoll));
+        float tWrap = ease(clamp(uTorusT * 2.0 - 1.0, 0.0, 1.0));
+        float targetRingWidth = 2.0 * PI * R_hole;
+        float xStretched = mix(pRolled.x, (uv.x - 0.5) * targetRingWidth, tWrap);
+        float wrapAngle = xStretched / R_hole;
+        float distFromRingCenter = R_hole + pRolled.z;
+        vec3 pToroid = vec3(distFromRingCenter * sin(wrapAngle), pRolled.y, distFromRingCenter * cos(wrapAngle) - R_hole);
+        vec3 posTorusFinal = mix(pRolled, pToroid, tWrap);
+
+        float wSphere = uSphereT;
+        float wCylinder = uCylinderT;
+        float wCone = uConeT;
+        float wDisc = uDiscT;
+        float wTorus = uTorusT;
+
+        float total3DWeight = wSphere + wCylinder + wCone + wDisc + wTorus;
+        vec3 pos3DCombined = vec3(0.0);
+        if (total3DWeight > 0.0) {
+          pos3DCombined = (posSphere * wSphere + posCylinder * wCylinder + posCone * wCone + posDisc * wDisc + posTorusFinal * wTorus) / total3DWeight;
+        }
+
+        float global3DT = clamp(total3DWeight, 0.0, 1.0);
+        vec3 finalPos = mix(pos2D, pos3DCombined, global3DT);
+
+        // Scale outward slightly more to ensure coverage and close seams
+        float edgeExtension = 1.06;
+        finalPos *= edgeExtension;
+
+        // Calculate proper normals for 3D shapes
+        vec3 normalSphere = normalize(posSphere);
+        vec3 normalCylinder = normalize(vec3(posCylinder.x, 0.0, posCylinder.z));
+        vec3 normalCone = normalize(vec3(posCone.x, 0.0, posCone.z));
+        vec3 normalDisc = vec3(0.0, 1.0, 0.0);
+
+        // Torus normal (pointing away from tube center)
+        vec3 torusCenter = vec3(distFromRingCenter * sin(wrapAngle), pRolled.y, distFromRingCenter * cos(wrapAngle) - R_hole);
+        vec3 tubeCenter = vec3((R_hole + pRolled.z) * sin(wrapAngle), 0.0, (R_hole + pRolled.z) * cos(wrapAngle) - R_hole);
+        vec3 normalTorus = normalize(torusCenter - tubeCenter);
+
+        vec3 normal3DCombined = vec3(0.0);
+        if (total3DWeight > 0.0) {
+          normal3DCombined = normalize(normalSphere * wSphere + normalCylinder * wCylinder + normalCone * wCone + normalDisc * wDisc + normalTorus * wTorus);
+        }
+
+        vec3 flatNormal = vec3(0.0, 0.0, 1.0);
+        vec3 finalNormal = mix(flatNormal, normal3DCombined, global3DT);
+
+        vNormal = normalize(normalMatrix * finalNormal);
+        vPosition = (modelViewMatrix * vec4(finalPos, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPos, 1.0);
       }
     `;
 
@@ -472,37 +600,59 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       varying vec3 vNormal;
       varying vec3 vPosition;
 
+      uniform float uLayerIntensity;
+
       void main() {
-        // Fresnel effect (rim light)
-        vec3 newVec = normalize(vPosition);
-        vec3 viewDirection = normalize(newVec);
-        float fresnel = dot(vNormal, viewDirection);
-          fresnel = pow(abs(fresnel), 1.2);
+        // Fresnel effect
+        vec3 viewDirection = normalize(vPosition);
+        float fresnel = abs(dot(vNormal, viewDirection));
         fresnel = 1.0 - fresnel;
 
-          // Bright cyan-blue atmosphere glow
-          vec3 color = vec3(0.3, 0.6, 1.0) * fresnel * 2.5;
-          float alpha = fresnel * 0.8;
+        // Enhanced glow with smooth falloff
+        float fresnel1 = pow(fresnel, 2.5);
+        float fresnel2 = pow(fresnel, 6.0);
+
+        // Realistic atmosphere colors
+        vec3 innerColor = vec3(0.6, 0.8, 1.0);
+        vec3 outerColor = vec3(0.3, 0.5, 0.9);
+
+        vec3 color = mix(outerColor, innerColor, fresnel2) * (fresnel1 * 1.5 + fresnel2 * 0.5);
+        float alpha = (fresnel1 * 0.4 + fresnel2 * 0.6) * uLayerIntensity;
 
         gl_FragColor = vec4(color, alpha);
       }
     `;
 
-    const atmosphereMaterial = new THREE.ShaderMaterial({
-      vertexShader: atmosphereVertexShader,
+    // Create single sphere atmosphere that fades for all 3D projections
+    const atmosphereLayers: THREE.Mesh[] = [];
+    const sphereRadius = 10.0 * 5.0;
+
+    const sphereAtmoMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
       fragmentShader: atmosphereFragmentShader,
+      uniforms: { uLayerIntensity: { value: settingsRef.current.viewMode === 'SPHERE' && settingsRef.current.showAtmosphere ? 0.5 : 0.0 } },
       transparent: true,
       side: THREE.BackSide,
-      blending: THREE.AdditiveBlending
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true
     });
+    const sphereAtmoGeometry = new THREE.SphereGeometry(sphereRadius * 1.05, 64, 64);
+    const sphereAtmoMesh = new THREE.Mesh(sphereAtmoGeometry, sphereAtmoMaterial);
+    sphereAtmoMesh.visible = settingsRef.current.viewMode === 'SPHERE';
+    scene.add(sphereAtmoMesh);
+    atmosphereLayers.push(sphereAtmoMesh);
 
-    const atmosphereGeometry = new THREE.PlaneGeometry(1, 1, 400, 400);
-    const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-    atmosphereMesh.scale.set(5.5, 5.5, 5.5); // Slightly larger than main mesh
-    atmosphereMesh.visible = false; // Hidden by default, shown only for satellite + 3D
-    scene.add(atmosphereMesh);
-    atmosphereMeshRef.current = atmosphereMesh;
-    console.log('✓ Atmosphere layer added');
+    atmosphereLayersRef.current = atmosphereLayers;
+    console.log('✓ Sphere atmosphere added');
 
     const starCount = 12000;
     const starGeometry = new THREE.BufferGeometry();
@@ -534,8 +684,15 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         const mode = settingsRef.current.viewMode;
         if (mode !== lastModeRef.current) {
           console.log('✓ Geometry mode changed:', lastModeRef.current, '→', mode);
+          // If we're leaving sphere, need to fade out atmosphere first
+          if (lastModeRef.current === 'SPHERE') {
+            allowMorphRef.current = false;
+          } else {
+            allowMorphRef.current = true;
+          }
           lastModeRef.current = mode;
         }
+
         const targets = {
           torus: mode === 'TORUS' ? 1.0 : 0.0,
           sphere: mode === 'SPHERE' ? 1.0 : 0.0,
@@ -548,14 +705,37 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
           robinson: mode === 'ROBINSON' ? 1.0 : 0.0,
           infinite: (mode === 'INFINITE' || mode === 'TORUS') ? 1.0 : 0.0,
         };
-        
+
+        // Update atmosphere fade
+        const isSphere = mode === 'SPHERE';
+        const targetAtmoFade = (isSphere && settingsRef.current.showAtmosphere) ? 1.0 : 0.0;
+
+        // Only fade in atmosphere after sphere is fully formed
+        if (isSphere && progressRef.current.sphere < 0.99) {
+          atmosphereFadeRef.current = Math.max(0, atmosphereFadeRef.current - deltaTime * 8.0);
+        } else {
+          // Fade out faster (8.0) when leaving sphere, fade in slower (3.0) when entering
+          const fadeSpeed = targetAtmoFade < atmosphereFadeRef.current ? 8.0 : 3.0;
+          atmosphereFadeRef.current += (targetAtmoFade - atmosphereFadeRef.current) * deltaTime * fadeSpeed;
+        }
+
+        // Allow morphing once atmosphere has faded out
+        if (!allowMorphRef.current && atmosphereFadeRef.current < 0.01) {
+          allowMorphRef.current = true;
+        }
+
         (Object.keys(targets) as Array<keyof typeof targets>).forEach(key => {
           let target = targets[key];
-          if (key === 'torus' && target === 1.0 && progressRef.current.infinite < 0.9) target = 0.0; 
+          if (key === 'torus' && target === 1.0 && progressRef.current.infinite < 0.9) target = 0.0;
+
           const current = (progressRef.current as any)[key];
           const s = (key === 'torus') ? 0.5 : 1.5;
-          if (current < target) (progressRef.current as any)[key] = Math.min(target, current + deltaTime * s);
-          else if (current > target) (progressRef.current as any)[key] = Math.max(target, current - deltaTime * 1.5);
+
+          // Only morph if allowed (atmosphere has faded)
+          if (allowMorphRef.current) {
+            if (current < target) (progressRef.current as any)[key] = Math.min(target, current + deltaTime * s);
+            else if (current > target) (progressRef.current as any)[key] = Math.max(target, current - deltaTime * 1.5);
+          }
         });
 
         const torusT = easeInOutCubic(progressRef.current.torus);
@@ -574,13 +754,14 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         m.uniforms.uDiscT.value = easeInOutCubic(progressRef.current.disc);
         m.uniforms.uTorusT.value = progressRef.current.torus;
         m.uniforms.uShowGrid.value = settingsRef.current.showGrid ? 1.0 : 0.0;
-        
-        // Show atmosphere only for satellite map + 3D projections
-        const is3D = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
-        const isSatellite = settingsRef.current.mapLayer === 'SATELLITE';
-        if (atmosphereMeshRef.current) {
-          atmosphereMeshRef.current.visible = is3D && isSatellite;
-        }
+
+        // Update atmosphere visibility (sphere only, more subtle)
+        atmosphereLayersRef.current.forEach((layer) => {
+          if (layer.material instanceof THREE.ShaderMaterial) {
+            layer.material.uniforms.uLayerIntensity.value = atmosphereFadeRef.current * 0.5;
+            layer.visible = atmosphereFadeRef.current > 0.01;
+          }
+        });
       }
 
       controls.update();
