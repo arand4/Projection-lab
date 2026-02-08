@@ -1,20 +1,60 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Projection Lab
 
-# Run and deploy your AI Studio app
+An interactive 3D map projection playground exploring how different cartographic projections transform geographical data. Built with React, Three.js, and TypeScript.
+This project was basically entirely programmed by AI.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1CCaokMGqH8l42ch8i5BnTvBYXNpMzB-1
+### 🗺️ Map Projections
+- **2D Projections:**
+  - Standard (Plate Carrée)
+  - Mercator (Navigational)
+  - Gall-Peters (Equal Area)
+  - Sinusoidal (Equal Area)
+  - Robinson (Pseudocylindrical)
+  - Infinite (Transverse)
 
-## Run Locally
+- **3D Visualizations:**
+  - Sphere
+  - Cylinder
+  - Cone
+  - Torus
+  - Disc
 
-**Prerequisites:**  Node.js
+### 🌍 Map Layers
+- **CyclOSM** - Topographic cycling maps
+- **ESRI Satellite** - High-resolution satellite imagery
+- **OpenTopoMap** - Detailed topographic maps
+- **OSM Standard** - OpenStreetMap standard style
+- **Humanitarian** - HOT (Humanitarian OpenStreetMap Team) style
+- **Carto Dark** - Dark theme cartography
 
+### ✨ Visual Features
+- **Atmospheric Effects** - Subtle atmospheric glow on sphere projection with manual toggle
+- **Grid Overlay** - Optional coordinate grid for reference
+- **Smooth Morphing** - Seamless transitions between projections (transitions could get some smoothing)
+- **Interactive Controls** - Orbit camera with zoom and rotation
+- **Star Field** - Ambient space background
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Technologies
+
+- **React** - UI framework
+- **Three.js** - 3D rendering engine
+- **TypeScript** - Type-safe development
+- **Vite** - Fast build tool
+- **Tailwind CSS** - Utility-first styling
+- **Lucide Icons** - Modern icon library
+## Credits
+
+### Map Data
+- © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+- [CyclOSM](https://www.cyclosm.org/)
+- [Humanitarian OSM Team](https://www.hotosm.org/)
+- [SRTM](https://www2.jpl.nasa.gov/srtm/)
+- [OpenTopoMap](https://opentopomap.org/)
+- [CARTO](https://carto.com/attributions)
+- [Esri, Maxar, Earthstar Geographics, and the GIS User Community](https://www.esri.com/en-us/legal/terms/full-master-agreement)
+
+## License
+
+Map data is subject to the licenses of their respective providers. See attribution links above for details.
