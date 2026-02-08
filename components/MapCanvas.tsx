@@ -127,6 +127,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
   const lastModeRef = useRef<string>('SPHERE');
   const [loading, setLoading] = useState(true);
+  const atmosphereMeshRef = useRef<THREE.Mesh | null>(null);
 
   // Create a placeholder texture
   const createPlaceholderTexture = (): THREE.CanvasTexture => {
@@ -453,6 +454,54 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     console.log('✓ Plane mesh added to scene with', geometry.attributes.position.count, 'vertices');
     console.log('✓ Initial mode:', settingsRef.current.viewMode);
     console.log('✓ Initial map layer:', settingsRef.current.mapLayer);
+
+    // Create atmosphere shader
+    const atmosphereVertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const atmosphereFragmentShader = `
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+
+      void main() {
+        // Fresnel effect (rim light)
+        vec3 newVec = normalize(vPosition);
+        vec3 viewDirection = normalize(newVec);
+        float fresnel = dot(vNormal, viewDirection);
+        fresnel = pow(abs(fresnel), 1.5);
+        fresnel = 1.0 - fresnel;
+
+        // Blue atmosphere color with glow
+        vec3 color = vec3(0.2, 0.4, 0.8) * fresnel * 1.5;
+        float alpha = fresnel * 0.6;
+
+        gl_FragColor = vec4(color, alpha);
+      }
+    `;
+
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: atmosphereVertexShader,
+      fragmentShader: atmosphereFragmentShader,
+      transparent: true,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending
+    });
+
+    const atmosphereGeometry = new THREE.PlaneGeometry(1, 1, 400, 400);
+    const atmosphereMesh = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    atmosphereMesh.scale.set(5.3, 5.3, 5.3); // Slightly larger than main mesh
+    scene.add(atmosphereMesh);
+    atmosphereMeshRef.current = atmosphereMesh;
+    console.log('✓ Atmosphere layer added');
+
     const starCount = 12000;
     const starGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(starCount * 3);
