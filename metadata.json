@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Map Projection Playground",
+  "description": "An interactive exploration of 2D and 3D geographic projections, including toroidal and conic mappings.",
+  "requestFramePermissions": []
+}

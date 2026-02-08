@@ -1,0 +1,423 @@
+
+import React, { useRef, useEffect, useState } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MapSettings, MapLayer } from '../types';
+
+interface MapCanvasProps {
+  settings: MapSettings;
+  sidebarOffset: number;
+}
+
+const TILE_SERVERS: Record<MapLayer, string> = {
+  CYCLOSM: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm',
+  STANDARD: 'https://tile.openstreetmap.org',
+  HOT: 'https://a.tile.openstreetmap.fr/hot',
+  OPENTOPOMAP: 'https://a.tile.opentopomap.org',
+  CARTODARK: 'https://a.basemaps.cartocdn.com/dark_all',
+  CARTOVOYAGER: 'https://a.basemaps.cartocdn.com/rastertiles/voyager',
+  SATELLITE: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile'
+};
+
+async function createStitchedTexture(urlPattern: (x: number, y: number, z: number) => string, zoom: number): Promise<THREE.CanvasTexture> {
+  const tileSize = 256;
+  const numTiles = Math.pow(2, zoom);
+  const canvas = document.createElement('canvas');
+  canvas.width = numTiles * tileSize;
+  canvas.height = numTiles * tileSize;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) throw new Error('Could not create canvas context');
+
+  const tilePromises: Promise<void>[] = [];
+  for (let x = 0; x < numTiles; x++) {
+    for (let y = 0; y < numTiles; y++) {
+      const url = urlPattern(x, y, zoom);
+      const p = new Promise<void>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          ctx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = url;
+      });
+      tilePromises.push(p);
+    }
+  }
+
+  await Promise.all(tilePromises);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping; 
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 16;
+  return texture;
+}
+
+const easeInOutCubic = (t: number): number => {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+
+const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const settingsRef = useRef<MapSettings>(settings);
+  const sidebarOffsetRef = useRef<number>(sidebarOffset);
+  const currentSidebarOffsetRef = useRef<number>(sidebarOffset);
+  const lastTimeRef = useRef<number>(0);
+  const starsRef = useRef<THREE.Points | null>(null);
+  
+  const progressRef = useRef({
+    torus: 0,
+    sphere: 0,
+    cylinder: 0,
+    cone: 0,
+    disc: 0,
+    mercator: 0,
+    gallPeters: 0,
+    sinusoidal: 0,
+    robinson: 0,
+    infinite: 0,
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+    sidebarOffsetRef.current = sidebarOffset;
+  }, [settings, sidebarOffset]);
+
+  useEffect(() => {
+    setLoading(true);
+    const mapUrlPattern = (x: number, y: number, z: number) => {
+      const isEsri = settings.mapLayer === 'SATELLITE';
+      return isEsri 
+        ? `${TILE_SERVERS[settings.mapLayer]}/${z}/${y}/${x}.jpg`
+        : `${TILE_SERVERS[settings.mapLayer]}/${z}/${x}/${y}.png`;
+    };
+
+    createStitchedTexture(mapUrlPattern, 4).then((newTexture) => {
+      if (materialRef.current) {
+        const oldTexture = materialRef.current.uniforms.uTexture.value;
+        if (oldTexture instanceof THREE.Texture && oldTexture.image) oldTexture.dispose();
+        materialRef.current.uniforms.uTexture.value = newTexture;
+      }
+      setLoading(false);
+    });
+  }, [settings.mapLayer]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 3000);
+    camera.position.set(0, 40, 110); 
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    containerRef.current.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const vertexShader = `
+      varying vec2 vUv;
+      varying vec2 vFinalUv;
+      
+      uniform float uTorusT; 
+      uniform float uSphereT;
+      uniform float uCylinderT;
+      uniform float uConeT;
+      uniform float uDiscT;
+      uniform float uMercatorT;
+      uniform float uGallPetersT;
+      uniform float uSinusoidalT;
+      uniform float uRobinsonT;
+      uniform float uInfiniteT;
+      
+      #define PI 3.14159265359
+
+      float ease(float t) {
+        return t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
+      }
+
+      // Robinson projection lookup tables
+      const float robX[19] = float[19](1.0, 0.9986, 0.9954, 0.99, 0.9822, 0.973, 0.963, 0.951, 0.9394, 0.9264, 0.911, 0.8935, 0.8735, 0.85, 0.8235, 0.793, 0.758, 0.7185, 0.5322);
+      const float robY[19] = float[19](0.0, 0.062, 0.124, 0.186, 0.248, 0.31, 0.372, 0.434, 0.4958, 0.5571, 0.6176, 0.6769, 0.7346, 0.7903, 0.8435, 0.8936, 0.9394, 0.9761, 1.0);
+
+      vec2 getRobinsonParams(float latDeg) {
+        float aLat = abs(latDeg);
+        float indexF = aLat / 5.0;
+        int i = int(floor(indexF));
+        i = clamp(i, 0, 17);
+        float t = fract(indexF);
+        
+        float x = mix(robX[i], robX[i+1], t);
+        float y = mix(robY[i], robY[i+1], t);
+        
+        if (latDeg < 0.0) y = -y;
+        return vec2(x, y);
+      }
+
+      void main() {
+        vUv = uv;
+        
+        // --- TEXTURE MAPPING LOGIC ---
+        float phiTrans = (uv.y - 0.5) * 2.0 * PI; 
+        float thetaTrans = (uv.x - 0.5) * PI;
+        vec3 pTransUV = vec3(sin(thetaTrans), cos(thetaTrans) * sin(phiTrans), cos(thetaTrans) * cos(phiTrans));
+        float eLatT = asin(clamp(pTransUV.y, -1.0, 1.0));
+        float eLonT = atan(pTransUV.x, pTransUV.z);
+        vec2 uvInfinite = vec2((eLonT / (2.0 * PI)) + 0.5, (eLatT / PI) + 0.5);
+
+        float mercY = (uv.y - 0.5) * 2.0 * PI; 
+        float mLat = 2.0 * atan(exp(mercY)) - PI / 2.0;
+        vec2 uvMercator = vec2(uv.x, (mLat / PI) + 0.5);
+        
+        float sinLatGP = (uv.y - 0.5) * 2.0;
+        float gpLat = asin(clamp(sinLatGP, -1.0, 1.0));
+        vec2 uvGallPeters = vec2(uv.x, (gpLat / PI) + 0.5);
+        
+        vec2 uvBase = uv;
+        uvBase = mix(uvBase, uvInfinite, uInfiniteT);
+        uvBase = mix(uvBase, uvMercator, uMercatorT);
+        uvBase = mix(uvBase, uvGallPeters, uGallPetersT);
+        vFinalUv = uvBase;
+
+        // --- GEOMETRY PARAMETERS ---
+        float sphereRadius = 10.0;
+        float planeW = 2.0 * PI * sphereRadius; 
+        
+        // Height targets to fix squishing
+        float hPC = PI * sphereRadius;           // Plate Carree 2:1
+        float hM = planeW;                       // Mercator Square (clipped)
+        float hGP = 2.0 * sphereRadius;          // Gall-Peters 3.14:1
+        float hInf = planeW;                     // Infinite
+        float hRob = planeW / 1.97;              // Robinson standard
+
+        float targetHeight = hPC;
+        targetHeight = mix(targetHeight, hM, uMercatorT);
+        targetHeight = mix(targetHeight, hGP, uGallPetersT);
+        targetHeight = mix(targetHeight, hInf, uInfiniteT);
+        targetHeight = mix(targetHeight, hRob, uRobinsonT);
+
+        float stdLat = (uv.y - 0.5) * PI;
+        float geoWidthFactor = mix(1.0, cos(stdLat), uSinusoidalT);
+        
+        // 2D BASE POSITION
+        vec3 pos2DDefault = vec3((uv.x - 0.5) * planeW * geoWidthFactor, (uv.y - 0.5) * targetHeight, 0.0);
+
+        // Robinson 2D
+        vec2 robParams = getRobinsonParams((uv.y - 0.5) * 180.0);
+        float robXFactor = 0.8487 * robParams.x;
+        float robYVal = 1.3523 * robParams.y * sphereRadius;
+        vec3 posRobinson = vec3((uv.x - 0.5) * planeW * robXFactor, robYVal, 0.0);
+
+        vec3 pos2D = mix(pos2DDefault, posRobinson, uRobinsonT);
+        
+        // 3D CANDIDATES
+        float lon = (uv.x - 0.5) * 2.0 * PI;
+        vec3 posCylinder = vec3(sphereRadius * sin(lon), (uv.y - 0.5) * targetHeight, sphereRadius * cos(lon));
+        float coneRadius = sphereRadius * (1.1 - uv.y); 
+        vec3 posCone = vec3(coneRadius * sin(lon), (uv.y - 0.5) * targetHeight, coneRadius * cos(lon));
+        float discRadius = sphereRadius * 2.0 * (1.0 - uv.y); 
+        vec3 posDisc = vec3(discRadius * sin(lon), 0.0, discRadius * cos(lon));
+
+        float stdLon = (uv.x - 0.5) * 2.0 * PI;
+        vec3 pSph = vec3(cos(stdLat) * sin(stdLon), sin(stdLat), cos(stdLat) * cos(stdLon));
+        vec3 pSphTrans = vec3(sin(thetaTrans), cos(thetaTrans) * sin(phiTrans), cos(thetaTrans) * cos(phiTrans));
+        vec3 posSphere = mix(pSph, pSphTrans, uInfiniteT) * sphereRadius;
+
+        // Torus
+        vec3 pos2D_Rect = vec3((uv.x - 0.5) * planeW, (uv.y - 0.5) * targetHeight, 0.0);
+        float r_tube = targetHeight / (2.0 * PI);
+        float R_hole = 25.0; 
+        float tRoll = ease(clamp(uTorusT * 2.0, 0.0, 1.0));
+        float rollAngle = (uv.y - 0.5) * 2.0 * PI;
+        vec3 pRolled = vec3(pos2D_Rect.x, mix(pos2D_Rect.y, r_tube * sin(rollAngle), tRoll), mix(pos2D_Rect.z, r_tube * (cos(rollAngle) - 1.0), tRoll));
+        float tWrap = ease(clamp(uTorusT * 2.0 - 1.0, 0.0, 1.0));
+        float targetRingWidth = 2.0 * PI * R_hole;
+        float xStretched = mix(pRolled.x, (uv.x - 0.5) * targetRingWidth, tWrap);
+        float wrapAngle = xStretched / R_hole;
+        float distFromRingCenter = R_hole + pRolled.z;
+        vec3 pToroid = vec3(distFromRingCenter * sin(wrapAngle), pRolled.y, distFromRingCenter * cos(wrapAngle) - R_hole);
+        vec3 posTorusFinal = mix(pRolled, pToroid, tWrap);
+
+        float wSphere = uSphereT;
+        float wCylinder = uCylinderT;
+        float wCone = uConeT;
+        float wDisc = uDiscT;
+        float wTorus = uTorusT;
+        
+        float total3DWeight = wSphere + wCylinder + wCone + wDisc + wTorus;
+        vec3 pos3DCombined = vec3(0.0);
+        if (total3DWeight > 0.0) {
+          pos3DCombined = (posSphere * wSphere + posCylinder * wCylinder + posCone * wCone + posDisc * wDisc + posTorusFinal * wTorus) / total3DWeight;
+        }
+
+        float global3DT = clamp(total3DWeight, 0.0, 1.0);
+        vec3 finalPos = mix(pos2D, pos3DCombined, global3DT);
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPos, 1.0);
+      }
+    `;
+
+    const fragmentShader = `
+      varying vec2 vUv;
+      varying vec2 vFinalUv;
+      uniform sampler2D uTexture;
+      uniform float uShowGrid;
+      
+      #define PI 3.14159265359
+
+      float latToMercator(float lat) {
+        float latLimit = 0.005; 
+        float clampedLat = clamp(lat, latLimit, 1.0 - latLimit);
+        float latRad = (clampedLat - 0.5) * PI;
+        return (log(tan(PI / 4.0 + latRad / 2.0)) / PI + 1.0) / 2.0;
+      }
+
+      void main() {
+        // Map to texture space using mercator adjustment for correctness on conformal modes
+        float mercY = latToMercator(vFinalUv.y);
+        vec4 texColor = texture2D(uTexture, vec2(vFinalUv.x, mercY));
+        
+        float grid = 0.0;
+        if (uShowGrid > 0.5) {
+          vec2 gridSpacing = vec2(18.0, 10.0);
+          vec2 gridUv = fract(vFinalUv * gridSpacing);
+          float line = step(0.98, gridUv.x) + step(0.98, gridUv.y);
+          grid = clamp(line * 0.08, 0.0, 0.5);
+        }
+        
+        gl_FragColor = vec4(texColor.rgb + grid, texColor.a);
+      }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+      vertexShader, fragmentShader,
+      uniforms: {
+        uTorusT: { value: 0.0 },
+        uSphereT: { value: 0.0 },
+        uCylinderT: { value: 0.0 },
+        uConeT: { value: 0.0 },
+        uDiscT: { value: 0.0 },
+        uMercatorT: { value: 0.0 },
+        uGallPetersT: { value: 0.0 },
+        uSinusoidalT: { value: 0.0 },
+        uRobinsonT: { value: 0.0 },
+        uInfiniteT: { value: 0.0 },
+        uTexture: { value: new THREE.Texture() }, 
+        uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 }
+      },
+      side: THREE.DoubleSide
+    });
+    materialRef.current = material;
+
+    const geometry = new THREE.PlaneGeometry(1, 1, 400, 400);
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    const starCount = 12000;
+    const starGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+        const radius = 600 + Math.random() * 800;
+        const theta = 2 * Math.PI * Math.random();
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = radius * Math.cos(phi);
+    }
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const starMesh = new THREE.Points(starGeometry, new THREE.PointsMaterial({ size: 0.7, color: 0x88aaff, transparent: true, opacity: 0.8 }));
+    scene.add(starMesh);
+    starsRef.current = starMesh;
+
+    const animate = (time: number) => {
+      const requestID = requestAnimationFrame(animate);
+      const deltaTime = (time - lastTimeRef.current) / 1000;
+      lastTimeRef.current = time;
+
+      const lerpSpeed = 5.0;
+      currentSidebarOffsetRef.current += (sidebarOffsetRef.current - currentSidebarOffsetRef.current) * Math.min(deltaTime * lerpSpeed, 1.0);
+      camera.setViewOffset(window.innerWidth, window.innerHeight, (currentSidebarOffsetRef.current / 2.0), 0, window.innerWidth, window.innerHeight);
+
+      if (starsRef.current) starsRef.current.rotation.y += 0.00005;
+
+      if (materialRef.current) {
+        const mode = settingsRef.current.viewMode;
+        const targets = {
+          torus: mode === 'TORUS' ? 1.0 : 0.0,
+          sphere: mode === 'SPHERE' ? 1.0 : 0.0,
+          cylinder: mode === 'CYLINDER' ? 1.0 : 0.0,
+          cone: mode === 'CONE' ? 1.0 : 0.0,
+          disc: mode === 'DISC' ? 1.0 : 0.0,
+          mercator: mode === 'MERCATOR' ? 1.0 : 0.0,
+          gallPeters: mode === 'GALL_PETERS' ? 1.0 : 0.0,
+          sinusoidal: mode === 'SINUSOIDAL' ? 1.0 : 0.0,
+          robinson: mode === 'ROBINSON' ? 1.0 : 0.0,
+          infinite: (mode === 'INFINITE' || mode === 'TORUS') ? 1.0 : 0.0,
+        };
+        
+        (Object.keys(targets) as Array<keyof typeof targets>).forEach(key => {
+          let target = targets[key];
+          if (key === 'torus' && target === 1.0 && progressRef.current.infinite < 0.9) target = 0.0; 
+          const current = (progressRef.current as any)[key];
+          const s = (key === 'torus') ? 0.5 : 1.5;
+          if (current < target) (progressRef.current as any)[key] = Math.min(target, current + deltaTime * s);
+          else if (current > target) (progressRef.current as any)[key] = Math.max(target, current - deltaTime * 1.5);
+        });
+
+        const torusT = easeInOutCubic(progressRef.current.torus);
+        controls.target.set(0, 0, -25.0 * torusT);
+
+        const m = materialRef.current;
+        m.uniforms.uInfiniteT.value = easeInOutCubic(progressRef.current.infinite);
+        m.uniforms.uMercatorT.value = easeInOutCubic(progressRef.current.mercator);
+        m.uniforms.uGallPetersT.value = easeInOutCubic(progressRef.current.gallPeters);
+        m.uniforms.uSinusoidalT.value = easeInOutCubic(progressRef.current.sinusoidal);
+        m.uniforms.uRobinsonT.value = easeInOutCubic(progressRef.current.robinson);
+        m.uniforms.uSphereT.value = easeInOutCubic(progressRef.current.sphere);
+        m.uniforms.uCylinderT.value = easeInOutCubic(progressRef.current.cylinder);
+        m.uniforms.uConeT.value = easeInOutCubic(progressRef.current.cone);
+        m.uniforms.uDiscT.value = easeInOutCubic(progressRef.current.disc);
+        m.uniforms.uTorusT.value = progressRef.current.torus;
+        m.uniforms.uShowGrid.value = settingsRef.current.showGrid ? 1.0 : 0.0;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+      return requestID;
+    };
+    
+    lastTimeRef.current = performance.now();
+    const animID = animate(lastTimeRef.current);
+    const handleResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
+    window.addEventListener('resize', handleResize);
+
+    return () => { window.removeEventListener('resize', handleResize); cancelAnimationFrame(animID); renderer.dispose(); geometry.dispose(); material.dispose(); };
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-full h-full bg-[#000005] cursor-move">
+        {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 backdrop-blur-md z-10">
+                <div className="text-center space-y-4">
+                    <div className="w-12 h-12 border-t-2 border-emerald-500 rounded-full animate-spin mx-auto" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Initializing Playground...</p>
+                </div>
+            </div>
+        )}
+    </div>
+  );
+};
+
+export default MapCanvas;
