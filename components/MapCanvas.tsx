@@ -9,19 +9,20 @@ interface MapCanvasProps {
   sidebarOffset: number;
 }
 
-const TILE_SERVERS: Record<MapLayer, string> = {
-  CYCLOSM: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm',
-  STANDARD: 'https://tile.openstreetmap.org',
-  HOT: 'https://a.tile.openstreetmap.fr/hot',
-  OPENTOPOMAP: 'https://a.tile.opentopomap.org',
-  CARTODARK: 'https://a.basemaps.cartocdn.com/dark_all',
-  CARTOVOYAGER: 'https://a.basemaps.cartocdn.com/rastertiles/voyager',
-  SATELLITE: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile'
+const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' }> = {
+  CYCLOSM: { url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm', format: 'xyz' },
+  STANDARD: { url: 'https://tile.openstreetmap.org', format: 'xyz' },
+  HOT: { url: 'https://a.tile.openstreetmap.fr/hot', format: 'xyz' },
+  OPENTOPOMAP: { url: 'https://a.tile.opentopomap.org', format: 'xyz' },
+  CARTODARK: { url: 'https://a.basemaps.cartocdn.com/dark_all', format: 'xyz' },
+  CARTOVOYAGER: { url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager', format: 'xyz' },
+  SATELLITE: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile', format: 'xyz' }
 };
 
 async function createStitchedTexture(urlPattern: (x: number, y: number, z: number) => string, zoom: number): Promise<THREE.CanvasTexture> {
   const tileSize = 256;
   const numTiles = Math.pow(2, zoom);
+  console.log(`Creating stitched texture with ${numTiles}x${numTiles} tiles at zoom ${zoom}`);
   const canvas = document.createElement('canvas');
   canvas.width = numTiles * tileSize;
   canvas.height = numTiles * tileSize;
@@ -29,18 +30,42 @@ async function createStitchedTexture(urlPattern: (x: number, y: number, z: numbe
   
   if (!ctx) throw new Error('Could not create canvas context');
 
+  // Fill with a gradient background first
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, '#1a3a52');
+  gradient.addColorStop(1, '#0d1b2a');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   const tilePromises: Promise<void>[] = [];
+  let loadedCount = 0;
+  const failedUrls: string[] = [];
+  
   for (let x = 0; x < numTiles; x++) {
     for (let y = 0; y < numTiles; y++) {
       const url = urlPattern(x, y, zoom);
       const p = new Promise<void>((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
+        const timeoutId = setTimeout(() => {
+          console.warn(`⏱️ Tile request timeout: ${url}`);
+          failedUrls.push(url);
+          resolve();
+        }, 5000);
+        
         img.onload = () => {
+          clearTimeout(timeoutId);
+          loadedCount++;
           ctx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+          console.log(`✓ Loaded tile ${x},${y}`);
           resolve();
         };
-        img.onerror = () => resolve();
+        img.onerror = () => {
+          clearTimeout(timeoutId);
+          failedUrls.push(url);
+          console.warn(`✗ Failed to load tile: ${url}`);
+          resolve();
+        };
         img.src = url;
       });
       tilePromises.push(p);
@@ -48,6 +73,22 @@ async function createStitchedTexture(urlPattern: (x: number, y: number, z: numbe
   }
 
   await Promise.all(tilePromises);
+  console.log(`Texture complete. Loaded ${loadedCount}/${tilePromises.length} tiles`);
+  if (failedUrls.length > 0) {
+    console.warn(`Failed URLs (${failedUrls.length}): ${failedUrls.slice(0, 2).join(', ')}${failedUrls.length > 2 ? ' ...' : ''}`);
+  }
+  
+  // If no tiles loaded, add some visual feedback
+  if (loadedCount === 0) {
+    ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
+    ctx.font = 'bold 50px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚠️ TILES FAILED', canvas.width / 2, canvas.height / 2 - 30);
+    ctx.font = '20px Arial';
+    ctx.fillText('Check console', canvas.width / 2, canvas.height / 2 + 30);
+  }
+  
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping; 
@@ -84,48 +125,132 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     infinite: 0,
   });
 
+  const lastModeRef = useRef<string>('SPHERE');
   const [loading, setLoading] = useState(true);
+
+  // Create a placeholder texture
+  const createPlaceholderTexture = (): THREE.CanvasTexture => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not create canvas context');
+    
+    // Create a grid pattern with coordinates
+    ctx.fillStyle = '#1a3a52';
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Draw a gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+    gradient.addColorStop(0, '#0d1b2a');
+    gradient.addColorStop(1, '#1a3a52');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Draw grid
+    ctx.strokeStyle = '#2a5a7a';
+    ctx.lineWidth = 2;
+    for (let i = 0; i <= 8; i++) {
+      const pos = (i / 8) * 512;
+      ctx.beginPath();
+      ctx.moveTo(pos, 0);
+      ctx.lineTo(pos, 512);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, pos);
+      ctx.lineTo(512, pos);
+      ctx.stroke();
+    }
+    
+    // Draw text
+    ctx.fillStyle = '#4a9aca';
+    ctx.font = 'bold 24px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Loading Tiles...', 256, 256);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    return texture;
+  };
 
   useEffect(() => {
     settingsRef.current = settings;
     sidebarOffsetRef.current = sidebarOffset;
+    console.log('Settings updated:', settings.viewMode, settings.mapLayer);
   }, [settings, sidebarOffset]);
 
   useEffect(() => {
     setLoading(true);
     const mapUrlPattern = (x: number, y: number, z: number) => {
+      const server = TILE_SERVERS[settings.mapLayer];
+      // ESRI World Imagery uses z/y/x format, others use z/x/y
       const isEsri = settings.mapLayer === 'SATELLITE';
-      return isEsri 
-        ? `${TILE_SERVERS[settings.mapLayer]}/${z}/${y}/${x}.jpg`
-        : `${TILE_SERVERS[settings.mapLayer]}/${z}/${x}/${y}.png`;
+      const url = isEsri 
+        ? `${server.url}/${z}/${y}/${x}.jpg?token=AAPk56271d0fa30e3a48e2e0ee0e3c4deeiRHbmU-TdTYvxAk8CgmM7OlTh5f0Z4V7sHvGJ0pPKHZXN4Zbu8i_YPcO3bVwzEbFr`
+        : `${server.url}/${z}/${x}/${y}.png`;
+      return url;
     };
 
+    console.log('Starting texture load for layer:', settings.mapLayer);
+    console.log('Sample URL:', mapUrlPattern(0, 0, 4));
     createStitchedTexture(mapUrlPattern, 4).then((newTexture) => {
+      console.log('Texture loaded successfully');
       if (materialRef.current) {
         const oldTexture = materialRef.current.uniforms.uTexture.value;
         if (oldTexture instanceof THREE.Texture && oldTexture.image) oldTexture.dispose();
         materialRef.current.uniforms.uTexture.value = newTexture;
       }
       setLoading(false);
+    }).catch((error) => {
+      console.error('Failed to load texture:', error);
+      setLoading(false);
     });
   }, [settings.mapLayer]);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    
+    // Prevent duplicate scene creation in Strict Mode
+    if (rendererRef.current) {
+      console.log('Scene already exists, skipping recreation');
+      return;
+    }
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 3000);
-    camera.position.set(0, 40, 110); 
+    scene.background = new THREE.Color(0x000005);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+    camera.position.set(0, 0, 250); 
+    console.log('Scene created with camera position:', camera.position);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     containerRef.current.appendChild(renderer.domElement);
+    console.log('Renderer created and appended to DOM');
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.autoRotate = false;
+    controls.enableZoom = true;
+    controls.enablePan = true;
+    controls.enableRotate = true;
+
+    // Debug mouse events
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      console.log('🖱️ Mouse down at:', e.clientX, e.clientY);
+    });
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      if (e.buttons > 0) console.log('🖱️ Mouse dragging at:', e.clientX, e.clientY);
+    });
+    renderer.domElement.addEventListener('mouseup', (e) => {
+      console.log('🖱️ Mouse up at:', e.clientX, e.clientY);
+    });
 
     const vertexShader = `
       varying vec2 vUv;
@@ -314,7 +439,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         uSinusoidalT: { value: 0.0 },
         uRobinsonT: { value: 0.0 },
         uInfiniteT: { value: 0.0 },
-        uTexture: { value: new THREE.Texture() }, 
+        uTexture: { value: createPlaceholderTexture() },
         uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 }
       },
       side: THREE.DoubleSide
@@ -323,8 +448,11 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
     const geometry = new THREE.PlaneGeometry(1, 1, 400, 400);
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.set(5, 5, 5);
     scene.add(mesh);
-
+    console.log('✓ Plane mesh added to scene with', geometry.attributes.position.count, 'vertices');
+    console.log('✓ Initial mode:', settingsRef.current.viewMode);
+    console.log('✓ Initial map layer:', settingsRef.current.mapLayer);
     const starCount = 12000;
     const starGeometry = new THREE.BufferGeometry();
     const positions = new Float32Array(starCount * 3);
@@ -342,7 +470,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     starsRef.current = starMesh;
 
     const animate = (time: number) => {
-      const requestID = requestAnimationFrame(animate);
       const deltaTime = (time - lastTimeRef.current) / 1000;
       lastTimeRef.current = time;
 
@@ -354,6 +481,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
       if (materialRef.current) {
         const mode = settingsRef.current.viewMode;
+        if (mode !== lastModeRef.current) {
+          console.log('✓ Geometry mode changed:', lastModeRef.current, '→', mode);
+          lastModeRef.current = mode;
+        }
         const targets = {
           torus: mode === 'TORUS' ? 1.0 : 0.0,
           sphere: mode === 'SPHERE' ? 1.0 : 0.0,
@@ -377,7 +508,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         });
 
         const torusT = easeInOutCubic(progressRef.current.torus);
-        controls.target.set(0, 0, -25.0 * torusT);
+        // Torus center hole is at z = -25 (based on R_hole = 25 in shader)
+        controls.target.set(0, 0, -25 * torusT);
 
         const m = materialRef.current;
         m.uniforms.uInfiniteT.value = easeInOutCubic(progressRef.current.infinite);
@@ -395,21 +527,32 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
       controls.update();
       renderer.render(scene, camera);
-      return requestID;
+      requestAnimationFrame(animate);
     };
     
     lastTimeRef.current = performance.now();
-    const animID = animate(lastTimeRef.current);
-    const handleResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
+    requestAnimationFrame(animate);
+    console.log('✓ Animation loop started');
+    
+    const handleResize = () => { 
+      camera.aspect = window.innerWidth / window.innerHeight; 
+      camera.updateProjectionMatrix(); 
+      renderer.setSize(window.innerWidth, window.innerHeight); 
+    };
     window.addEventListener('resize', handleResize);
 
-    return () => { window.removeEventListener('resize', handleResize); cancelAnimationFrame(animID); renderer.dispose(); geometry.dispose(); material.dispose(); };
+    return () => { 
+      window.removeEventListener('resize', handleResize); 
+      renderer.dispose(); 
+      geometry.dispose(); 
+      material.dispose(); 
+    };
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-[#000005] cursor-move">
+    <div ref={containerRef} className="w-full h-full bg-[#000005] cursor-move" style={{ touchAction: 'none' }}>
         {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 backdrop-blur-md z-10">
+            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 backdrop-blur-md z-10 pointer-events-none">
                 <div className="text-center space-y-4">
                     <div className="w-12 h-12 border-t-2 border-emerald-500 rounded-full animate-spin mx-auto" />
                     <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Initializing Playground...</p>

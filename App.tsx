@@ -42,12 +42,22 @@ const App: React.FC = () => {
   const last2DMode = useRef<ViewMode>('STANDARD');
 
   const setMode = useCallback((target: ViewMode) => {
+    console.log('✓ setMode called with:', target);
     const is3D = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(target);
     if (!is3D) last2DMode.current = target;
-    setSettings(s => ({ ...s, viewMode: target }));
+    setSettings(s => {
+      console.log('✓ Settings updated to viewMode:', target);
+      return { ...s, viewMode: target };
+    });
   }, []);
 
-  const setLayer = (layer: MapLayer) => setSettings(s => ({ ...s, mapLayer: layer }));
+  const setLayer = (layer: MapLayer) => {
+    console.log('✓ setLayer called with:', layer);
+    setSettings(s => {
+      console.log('✓ Settings updated to mapLayer:', layer);
+      return { ...s, mapLayer: layer };
+    });
+  };
   const toggleGrid = () => setSettings(s => ({ ...s, showGrid: !s.showGrid }));
 
   const handle3DTransition = (target3D: ViewMode) => {
