@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MapSettings, MapLayer } from '../types';
+import AttributionOverlay from './AttributionOverlay';
 
 interface MapCanvasProps {
   settings: MapSettings;
@@ -608,6 +609,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
                 </div>
             </div>
         )}
+        <AttributionOverlay mapLayer={settings.mapLayer} />
     </div>
   );
 };
