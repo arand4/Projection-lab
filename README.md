@@ -5,6 +5,8 @@
 An interactive 3D map projection playground exploring how different cartographic projections transform geographical data. Built with React, Three.js, and TypeScript.
 This project was basically entirely programmed by AI.
 
+Link: https://arand4.github.io/Projection-lab/
+
 ## Features
 
 ### 🗺️ Map Projections
