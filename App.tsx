@@ -187,7 +187,9 @@ const App: React.FC = () => {
             <div className="pt-10 border-t border-white/5">
               <div className="flex items-start gap-4 p-5 bg-blue-500/[0.02] border border-blue-500/10 rounded-2xl">
                 <Info className="text-blue-500/60 shrink-0 mt-0.5" size={16} />
-                <p className="text-[10px] text-zinc-500 leading-relaxed font-medium">Map Projection Playground: Explore the mathematical beauty of geographic mappings, including the Robinson and Plate Carrée projections.</p>
+                <p className="text-[10px] text-zinc-500 leading-relaxed font-medium">
+                  Licensed under <a href="https://github.com/arand4/Projection-lab/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">GNU GPL v3</a>. View source on <a href="https://github.com/arand4/Projection-lab" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">GitHub</a>.
+                </p>
               </div>
             </div>
           </section>

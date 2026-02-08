@@ -191,8 +191,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       const server = TILE_SERVERS[settings.mapLayer];
       // ESRI World Imagery uses z/y/x format, others use z/x/y
       const isEsri = settings.mapLayer === 'SATELLITE';
-      const url = isEsri 
-        ? `${server.url}/${z}/${y}/${x}.jpg?token=AAPk56271d0fa30e3a48e2e0ee0e3c4deeiRHbmU-TdTYvxAk8CgmM7OlTh5f0Z4V7sHvGJ0pPKHZXN4Zbu8i_YPcO3bVwzEbFr`
+      const url = isEsri
+        ? `${server.url}/${z}/${y}/${x}.jpg`
         : `${server.url}/${z}/${x}/${y}.png`;
       return url;
     };
