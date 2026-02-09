@@ -21,8 +21,11 @@ const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'sta
 };
 
 const OVERLAY_SERVERS: Record<Exclude<OverlayLayer, 'NONE'>, { url: string; format: 'xyz' }> = {
-  OCEAN_TEMP: { url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_L3_SST_MidIR_4km_Night_Daily/default', format: 'xyz' },
-  HIKING_TRAILS: { url: 'https://tile.waymarkedtrails.org/hiking', format: 'xyz' }
+  HIKING_TRAILS: { url: 'https://tile.waymarkedtrails.org/hiking', format: 'xyz' },
+  CYCLING_ROUTES: { url: 'https://tile.waymarkedtrails.org/cycling', format: 'xyz' },
+  MTB_TRAILS: { url: 'https://tile.waymarkedtrails.org/mtb', format: 'xyz' },
+  OPEN_RAILWAY_MAP: { url: 'https://tiles.openrailwaymap.org/standard', format: 'xyz' },
+  PLACE_LABELS: { url: 'https://a.basemaps.cartocdn.com/dark_only_labels', format: 'xyz' }
 };
 
 async function createStaticTexture(url: string): Promise<THREE.Texture> {
@@ -304,13 +307,6 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     // Load overlay texture
     const overlayServer = OVERLAY_SERVERS[overlayLayer];
     const overlayUrlPattern = (x: number, y: number, z: number) => {
-      // NASA GIBS ocean layers need date format
-      if (overlayLayer === 'OCEAN_TEMP') {
-        const date = new Date();
-        date.setDate(date.getDate() - 1); // Use yesterday's data
-        const dateStr = date.toISOString().split('T')[0];
-        return `${overlayServer.url}/${dateStr}/GoogleMapsCompatible_Level7/${z}/${y}/${x}.png`;
-      }
       return `${overlayServer.url}/${z}/${x}/${y}.png`;
     };
 

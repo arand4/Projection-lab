@@ -29,9 +29,8 @@ import {
   Pyramid,
   Disc as DiscIcon,
   Earth,
-  Anchor,
   Footprints,
-  Waves
+  Train
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -114,8 +113,11 @@ const App: React.FC = () => {
 
   const overlayLayers: { id: OverlayLayer; name: string; icon: any; color: string }[] = [
     { id: 'NONE', name: 'No Overlay', icon: Layers, color: 'text-zinc-400' },
-    { id: 'OCEAN_TEMP', name: 'Ocean Temperature', icon: Waves, color: 'text-cyan-400' },
     { id: 'HIKING_TRAILS', name: 'Hiking Trails', icon: Footprints, color: 'text-green-400' },
+    { id: 'CYCLING_ROUTES', name: 'Cycling Routes', icon: Bike, color: 'text-orange-400' },
+    { id: 'MTB_TRAILS', name: 'MTB Trails', icon: Mountain, color: 'text-amber-400' },
+    { id: 'OPEN_RAILWAY_MAP', name: 'Railways', icon: Train, color: 'text-purple-400' },
+    { id: 'PLACE_LABELS', name: 'Place Labels', icon: MapIcon, color: 'text-cyan-400' },
   ];
 
   return (

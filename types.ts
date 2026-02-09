@@ -26,7 +26,7 @@ export type MapLayer =
   | 'BLUE_MARBLE'
   | 'NASA_VIIRS';
 
-export type OverlayLayer = 'NONE' | 'OCEAN_TEMP' | 'HIKING_TRAILS';
+export type OverlayLayer = 'NONE' | 'HIKING_TRAILS' | 'CYCLING_ROUTES' | 'MTB_TRAILS' | 'OPEN_RAILWAY_MAP' | 'PLACE_LABELS';
 
 export interface MapSettings {
   zoom: number;

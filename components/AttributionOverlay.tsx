@@ -65,17 +65,38 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
 };
 
 const OVERLAY_ATTRIBUTIONS: Record<Exclude<OverlayLayer, 'NONE'>, Attribution> = {
-  OCEAN_TEMP: {
-    text: 'Overlay: ',
-    links: [
-      { text: 'NASA EOSDIS GIBS', url: 'https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs' },
-      { text: 'MODIS Aqua SST', url: 'https://oceancolor.gsfc.nasa.gov/data/aqua/' }
-    ]
-  },
   HIKING_TRAILS: {
     text: 'Overlay: © ',
     links: [
       { text: 'Waymarked Trails', url: 'https://waymarkedtrails.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  },
+  CYCLING_ROUTES: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'Waymarked Trails', url: 'https://waymarkedtrails.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  },
+  MTB_TRAILS: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'Waymarked Trails', url: 'https://waymarkedtrails.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  },
+  OPEN_RAILWAY_MAP: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'OpenRailwayMap', url: 'https://www.openrailwaymap.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  },
+  PLACE_LABELS: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'CARTO', url: 'https://carto.com/attributions' },
       { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
     ]
   }
