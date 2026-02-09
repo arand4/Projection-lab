@@ -65,11 +65,11 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
 };
 
 const OVERLAY_ATTRIBUTIONS: Record<Exclude<OverlayLayer, 'NONE'>, Attribution> = {
-  OPENSEAMAP: {
-    text: 'Overlay: © ',
+  OCEAN_TEMP: {
+    text: 'Overlay: ',
     links: [
-      { text: 'OpenSeaMap', url: 'http://www.openseamap.org/' },
-      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+      { text: 'NASA EOSDIS GIBS', url: 'https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs' },
+      { text: 'MODIS Aqua SST', url: 'https://oceancolor.gsfc.nasa.gov/data/aqua/' }
     ]
   },
   HIKING_TRAILS: {

@@ -30,7 +30,8 @@ import {
   Disc as DiscIcon,
   Earth,
   Anchor,
-  Footprints
+  Footprints,
+  Waves
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -113,7 +114,7 @@ const App: React.FC = () => {
 
   const overlayLayers: { id: OverlayLayer; name: string; icon: any; color: string }[] = [
     { id: 'NONE', name: 'No Overlay', icon: Layers, color: 'text-zinc-400' },
-    { id: 'OPENSEAMAP', name: 'Maritime/Nautical', icon: Anchor, color: 'text-blue-400' },
+    { id: 'OCEAN_TEMP', name: 'Ocean Temperature', icon: Waves, color: 'text-cyan-400' },
     { id: 'HIKING_TRAILS', name: 'Hiking Trails', icon: Footprints, color: 'text-green-400' },
   ];
 

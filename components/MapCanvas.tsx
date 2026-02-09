@@ -21,7 +21,7 @@ const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'sta
 };
 
 const OVERLAY_SERVERS: Record<Exclude<OverlayLayer, 'NONE'>, { url: string; format: 'xyz' }> = {
-  OPENSEAMAP: { url: 'https://tiles.openseamap.org/seamark', format: 'xyz' },
+  OCEAN_TEMP: { url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_L3_SST_MidIR_4km_Night_Daily/default', format: 'xyz' },
   HIKING_TRAILS: { url: 'https://tile.waymarkedtrails.org/hiking', format: 'xyz' }
 };
 
@@ -138,7 +138,7 @@ async function createStitchedTexture(urlPattern: (x: number, y: number, z: numbe
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.anisotropy = 16;
-  texture.format = isOverlay ? THREE.RGBAFormat : THREE.RGBFormat;
+  // CanvasTexture is always RGBA format, don't override it
   texture.needsUpdate = true;
   return texture;
 }
@@ -304,13 +304,21 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     // Load overlay texture
     const overlayServer = OVERLAY_SERVERS[overlayLayer];
     const overlayUrlPattern = (x: number, y: number, z: number) => {
+      // NASA GIBS ocean layers need date format
+      if (overlayLayer === 'OCEAN_TEMP') {
+        const date = new Date();
+        date.setDate(date.getDate() - 1); // Use yesterday's data
+        const dateStr = date.toISOString().split('T')[0];
+        return `${overlayServer.url}/${dateStr}/GoogleMapsCompatible_Level7/${z}/${y}/${x}.png`;
+      }
       return `${overlayServer.url}/${z}/${x}/${y}.png`;
     };
 
     console.log('Loading overlay texture for layer:', overlayLayer);
-    console.log('Sample overlay URL:', overlayUrlPattern(0, 0, 4));
+    console.log('Sample overlay URL:', overlayUrlPattern(0, 0, 5));
 
-    createStitchedTexture(overlayUrlPattern, 4, true).then((newOverlayTexture) => {
+    // Use zoom 5 for overlays to make features more visible (32x32 tiles)
+    createStitchedTexture(overlayUrlPattern, 5, true).then((newOverlayTexture) => {
       console.log('Overlay texture loaded successfully');
       if (materialRef.current) {
         const oldTexture = materialRef.current.uniforms.uOverlayTexture.value;
@@ -528,19 +536,22 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       }
 
       void main() {
-        // Apply Mercator transformation only for tiled sources (Web Mercator projection)
+        // Base texture coordinates: Apply Mercator transformation only for tiled sources
         // Skip for equirectangular sources like Blue Marble
-        vec2 texCoords = vFinalUv;
+        vec2 baseTexCoords = vFinalUv;
         if (uUseEquirectangular < 0.5) {
           // Tiled sources need Mercator adjustment
-          texCoords.y = latToMercator(vFinalUv.y);
+          baseTexCoords.y = latToMercator(vFinalUv.y);
         }
 
-        vec4 texColor = texture2D(uTexture, texCoords);
+        vec4 texColor = texture2D(uTexture, baseTexCoords);
 
         // Blend overlay texture if visible
+        // Overlays are ALWAYS Web Mercator tiles, regardless of base map projection
         if (uOverlayVisible > 0.5) {
-          vec4 overlayColor = texture2D(uOverlayTexture, texCoords);
+          vec2 overlayTexCoords = vFinalUv;
+          overlayTexCoords.y = latToMercator(vFinalUv.y);
+          vec4 overlayColor = texture2D(uOverlayTexture, overlayTexCoords);
           // Blend overlay on top of base using alpha compositing
           texColor.rgb = mix(texColor.rgb, overlayColor.rgb, overlayColor.a);
         }

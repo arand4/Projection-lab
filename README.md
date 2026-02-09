@@ -1,4 +1,4 @@
-# Projection Lab
+º# Projection Lab
 
 ![Torus Projection](Torus%20Projection.png)
 
