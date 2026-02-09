@@ -34,8 +34,8 @@ Link: https://arand4.github.io/Projection-lab/
 
 ### ✨ Visual Features
 - **Day/Night Terminator** - Real-time day/night shadow based on sun position
-- **Sun Visualization** - 3D sun with realistic glow effect (Sphere, Cylinder, Cone modes)
 - **Time & Date Controls** - Adjust time of day and date to see how sunlight changes
+- **Sun Visualization** - Sun that is visible with (Sphere, Cylinder, Cone modes)
 - **Specular Reflection** - Sun glint on oceans in 3D modes
 - **Atmospheric Effects** - Subtle atmospheric glow on sphere projection with manual toggle
 - **Grid Overlay** - Optional coordinate grid for reference
