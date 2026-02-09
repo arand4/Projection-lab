@@ -33,8 +33,12 @@ export interface MapSettings {
   rotation: Vector2;
   showGrid: boolean;
   showAtmosphere: boolean;
+  showStars: boolean;
+  showDayNight: boolean;
   autoRotate: boolean;
   viewMode: ViewMode;
   mapLayer: MapLayer;
   overlayLayer: OverlayLayer;
+  timeOfDay: number; // 0-24 hours
+  dayOfYear: number; // 1-366
 }

@@ -8,6 +8,7 @@ import AttributionOverlay from './AttributionOverlay';
 interface MapCanvasProps {
   settings: MapSettings;
   sidebarOffset: number;
+  resetOrbitTrigger: number;
 }
 
 const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'static' }> = {
@@ -150,7 +151,7 @@ const easeInOutCubic = (t: number): number => {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
+const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset, resetOrbitTrigger }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -160,6 +161,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
   const currentSidebarOffsetRef = useRef<number>(sidebarOffset);
   const lastTimeRef = useRef<number>(0);
   const starsRef = useRef<THREE.Points | null>(null);
+  const sunRef = useRef<THREE.Mesh | null>(null);
+  const orbitResetTargetRef = useRef<THREE.Vector3 | null>(null);
   
   const progressRef = useRef({
     torus: 0,
@@ -178,6 +181,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
   const [loading, setLoading] = useState(true);
   const atmosphereLayersRef = useRef<THREE.Mesh[]>([]);
   const atmosphereFadeRef = useRef<number>(settings.viewMode === 'SPHERE' ? 1.0 : 0.0);
+  const dayNightFadeRef = useRef<number>(settings.showDayNight ? 1.0 : 0.0);
   const allowMorphRef = useRef<boolean>(true);
 
   // Create a placeholder texture
@@ -232,8 +236,34 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
   useEffect(() => {
     settingsRef.current = settings;
     sidebarOffsetRef.current = sidebarOffset;
-    console.log('Settings updated:', settings.viewMode, settings.mapLayer);
+    console.log('Settings updated:', settings.viewMode, 'showDayNight:', settings.showDayNight);
   }, [settings, sidebarOffset]);
+
+  // Reset orbit when trigger changes (keeps zoom/pan, only resets viewing angle)
+  useEffect(() => {
+    if (resetOrbitTrigger > 0 && controlsRef.current) {
+      const camera = controlsRef.current.object as THREE.PerspectiveCamera;
+      const target = controlsRef.current.target.clone();
+      // Keep the current distance (zoom) from the target
+      const currentDistance = camera.position.distanceTo(target);
+      // Set target position for smooth animation (along +Z axis from target)
+      orbitResetTargetRef.current = new THREE.Vector3(target.x, target.y, target.z + currentDistance);
+      console.log('Smooth orbit reset initiated');
+    }
+  }, [resetOrbitTrigger]);
+
+  // Toggle stars visibility
+  useEffect(() => {
+    if (starsRef.current) {
+      starsRef.current.visible = settings.showStars;
+    }
+  }, [settings.showStars]);
+
+  // Day/night fade is handled in the animate loop via dayNightFadeRef
+  // This effect just tracks the setting change
+  useEffect(() => {
+    // Fade animation handled in animate loop
+  }, [settings.showDayNight]);
 
   useEffect(() => {
     setLoading(true);
@@ -363,6 +393,11 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     controls.enableRotate = true;
     controls.minDistance = 5; // Will be dynamically updated based on shape
     controlsRef.current = controls;
+
+    // Cancel orbit reset animation when user starts interacting
+    controls.addEventListener('start', () => {
+      orbitResetTargetRef.current = null;
+    });
 
     // Debug mouse events
     renderer.domElement.addEventListener('mousedown', (e) => {
@@ -525,6 +560,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       uniform float uOverlayVisible;
       uniform float uShowGrid;
       uniform float uUseEquirectangular;
+      uniform float uShowDayNight;
+      uniform float uIs3D;
+      uniform vec3 uSunDirection;
+      uniform vec3 uCameraPosition;
 
       #define PI 3.14159265359
 
@@ -556,6 +595,53 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
           texColor.rgb = mix(texColor.rgb, overlayColor.rgb, overlayColor.a);
         }
 
+        // Apply day/night terminator effect and sun reflection
+        if (uShowDayNight > 0.5) {
+          // Convert UV to spherical coordinates (lat/lon)
+          float lon = (vFinalUv.x - 0.5) * 2.0 * PI; // -PI to PI
+          float lat = (vFinalUv.y - 0.5) * PI;       // -PI/2 to PI/2
+
+          // Calculate surface normal in world space for equirectangular projection
+          // In Three.js: X=right, Y=up, Z=toward camera
+          // Map convention: lon=0 faces +Z, lat=0 is equator
+          vec3 surfaceNormal = vec3(
+            cos(lat) * sin(lon),   // X: east-west
+            sin(lat),              // Y: north-south  
+            cos(lat) * cos(lon)    // Z: toward camera at lon=0
+          );
+
+          // Calculate illumination based on dot product with sun direction
+          vec3 sunDir = normalize(uSunDirection);
+          float illumination = dot(surfaceNormal, sunDir);
+          
+          // Smooth terminator with twilight zone
+          float daylight = smoothstep(-0.1, 0.1, illumination);
+          
+          // Apply shadow to night side (darken to about 15% brightness)
+          texColor.rgb *= mix(0.15, 1.0, daylight);
+          
+          // Specular reflection (sun glint on ocean/water) - only for 3D modes
+          // Use blue channel dominance to detect water (ocean is blue-ish)
+          float blueRatio = texColor.b / (max(texColor.r + texColor.g + texColor.b, 0.01) / 3.0);
+          float brightness = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+          // Water tends to be darker and more blue
+          float isWater = smoothstep(0.3, 0.15, brightness) * smoothstep(0.8, 1.2, blueRatio);
+          float specularity = isWater * 0.9 * uIs3D;
+          
+          // View direction (camera looks along -Z in view space, but we need world direction)
+          vec3 viewDir = normalize(uCameraPosition);
+          
+          // Specular highlight using reflection
+          vec3 reflectDir = reflect(-sunDir, surfaceNormal);
+          float specAngle = max(dot(reflectDir, viewDir), 0.0);
+          // Softer, broader specular highlight
+          float specular = pow(specAngle, 20.0) * specularity * daylight * 0.6;
+          
+          // Add warm sun reflection color
+          vec3 sunColor = vec3(1.0, 0.95, 0.85);
+          texColor.rgb += specular * sunColor * 1.2;
+        }
+
         float grid = 0.0;
         if (uShowGrid > 0.5) {
           vec2 gridSpacing = vec2(18.0, 10.0);
@@ -585,7 +671,11 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         uOverlayTexture: { value: createPlaceholderTexture() },
         uOverlayVisible: { value: 0.0 },
         uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 },
-        uUseEquirectangular: { value: 0.0 }
+        uUseEquirectangular: { value: 0.0 },
+        uShowDayNight: { value: settingsRef.current.showDayNight ? 1.0 : 0.0 },
+        uIs3D: { value: 0.0 },
+        uSunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        uCameraPosition: { value: new THREE.Vector3(0, 0, 250) }
       },
       side: THREE.DoubleSide,
       transparent: false
@@ -813,15 +903,231 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     scene.add(starMesh);
     starsRef.current = starMesh;
 
+    // Create Sun mesh with glowing shader for day/night visualization
+    const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
+    const sunMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        glowColor: { value: new THREE.Color(0xffdd44) },
+        coreColor: { value: new THREE.Color(0xffffee) },
+        uOpacity: { value: 1.0 }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = -mvPosition.xyz;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 glowColor;
+        uniform vec3 coreColor;
+        uniform float uOpacity;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          // Calculate rim factor based on view angle
+          vec3 viewDir = normalize(vViewPosition);
+          float rim = dot(vNormal, viewDir);
+          
+          // Core is bright where facing camera, orange at edges
+          vec3 color = mix(glowColor, coreColor, rim);
+          
+          // Solid in center, fades at rim
+          float alpha = smoothstep(0.0, 0.3, rim);
+          
+          gl_FragColor = vec4(color, alpha * uOpacity);
+        }
+      `,
+      transparent: true,
+      side: THREE.FrontSide,
+      depthWrite: false
+    });
+    const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+    
+    // Add soft glow layers around the sun (using BackSide for outer glow effect)
+    const glowSizes = [1.5, 2.2, 3.2];
+    const glowOpacities = [0.35, 0.2, 0.1];
+    glowSizes.forEach((scale, i) => {
+      const glowGeo = new THREE.SphereGeometry(10 * scale, 32, 32);
+      const glowMat = new THREE.ShaderMaterial({
+        uniforms: {
+          glowColor: { value: new THREE.Color(0xffaa33) },
+          uOpacity: { value: 1.0 }
+        },
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vViewPosition;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 glowColor;
+          uniform float uOpacity;
+          varying vec3 vNormal;
+          varying vec3 vViewPosition;
+          void main() {
+            vec3 viewDir = normalize(vViewPosition);
+            // Inverted rim for BackSide - glow at edges
+            float rim = 1.0 - abs(dot(vNormal, viewDir));
+            float intensity = pow(rim, 1.5) * ${glowOpacities[i].toFixed(2)};
+            gl_FragColor = vec4(glowColor, intensity * uOpacity);
+          }
+        `,
+        transparent: true,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+      sunMesh.add(glowMesh);
+    });
+    
+    // Sun only visible for certain 3D modes (managed in animate loop)
+    const initialMode = settingsRef.current.viewMode;
+    const showSunInitially = settingsRef.current.showDayNight && ['SPHERE', 'CYLINDER', 'CONE'].includes(initialMode);
+    sunMesh.visible = showSunInitially;
+    // Position sun initially (will be updated in animate loop)
+    sunMesh.position.set(0, 0, 400);
+    scene.add(sunMesh);
+    sunRef.current = sunMesh;
+    console.log('✓ Sun mesh created, visible:', showSunInitially);
+
     const animate = (time: number) => {
-      const deltaTime = (time - lastTimeRef.current) / 1000;
+      const deltaTime = lastTimeRef.current === 0 ? 0.016 : Math.min((time - lastTimeRef.current) / 1000, 0.1);
       lastTimeRef.current = time;
 
       const lerpSpeed = 5.0;
       currentSidebarOffsetRef.current += (sidebarOffsetRef.current - currentSidebarOffsetRef.current) * Math.min(deltaTime * lerpSpeed, 1.0);
       camera.setViewOffset(window.innerWidth, window.innerHeight, (currentSidebarOffsetRef.current / 2.0), 0, window.innerWidth, window.innerHeight);
 
+      // Smooth orbit reset animation
+      if (orbitResetTargetRef.current && controlsRef.current) {
+        const targetPos = orbitResetTargetRef.current;
+        const currentPos = camera.position;
+        const orbitLerpSpeed = 4.0;
+        
+        // Lerp camera position towards target
+        currentPos.x += (targetPos.x - currentPos.x) * Math.min(deltaTime * orbitLerpSpeed, 1.0);
+        currentPos.y += (targetPos.y - currentPos.y) * Math.min(deltaTime * orbitLerpSpeed, 1.0);
+        currentPos.z += (targetPos.z - currentPos.z) * Math.min(deltaTime * orbitLerpSpeed, 1.0);
+        controlsRef.current.update();
+        
+        // Check if close enough to target to stop animation
+        if (currentPos.distanceTo(targetPos) < 0.1) {
+          orbitResetTargetRef.current = null;
+        }
+      }
+
+      // Update camera position uniform for specular reflections
+      if (materialRef.current) {
+        materialRef.current.uniforms.uCameraPosition.value.copy(camera.position);
+      }
+
+      // Day/night fade animation (smooth ~0.5 second transition)
+      const dayNightTarget = settingsRef.current.showDayNight ? 1.0 : 0.0;
+      const fadeStep = deltaTime * 2.0; // ~0.5 second fade
+      const prevFade = dayNightFadeRef.current;
+      if (dayNightFadeRef.current < dayNightTarget) {
+        dayNightFadeRef.current = Math.min(dayNightFadeRef.current + fadeStep, dayNightTarget);
+      } else if (dayNightFadeRef.current > dayNightTarget) {
+        dayNightFadeRef.current = Math.max(dayNightFadeRef.current - fadeStep, dayNightTarget);
+      }
+      // Log fade changes
+      if (Math.abs(prevFade - dayNightFadeRef.current) > 0.01) {
+        console.log('Day/night fade:', dayNightFadeRef.current.toFixed(2), 'target:', dayNightTarget);
+      }
+      
+      // Update shader uniform with fade value
+      if (materialRef.current) {
+        materialRef.current.uniforms.uShowDayNight.value = dayNightFadeRef.current;
+      }
+
       if (starsRef.current) starsRef.current.rotation.y += 0.00005;
+
+      // Update sun position based on custom time/date settings (for day/night terminator)
+      if (sunRef.current && materialRef.current) {
+        // Use custom time and date from settings (with defaults)
+        const hours = settingsRef.current.timeOfDay ?? 12;
+        const dayOfYear = settingsRef.current.dayOfYear ?? 1;
+        
+        // Solar noon is at 12:00 UTC at longitude 0
+        const sunLongitudeRad = ((12 - hours) * 15) * (Math.PI / 180); // Convert to radians
+        
+        // Calculate sun's declination (varies throughout year, -23.4 to +23.4 degrees)
+        const declination = -23.44 * Math.cos((2 * Math.PI / 365) * (dayOfYear + 10)) * (Math.PI / 180);
+        
+        // Sun direction vector for shader (Three.js: X=right, Y=up, Z=toward camera)
+        // At lon=0, sun faces +Z. At lon=90E, sun faces +X.
+        const sunDirection = new THREE.Vector3(
+          Math.cos(declination) * Math.sin(sunLongitudeRad),  // X: east-west
+          Math.sin(declination),                               // Y: north-south
+          Math.cos(declination) * Math.cos(sunLongitudeRad)   // Z: toward camera at lon=0
+        ).normalize();
+        
+        // Update shader uniform
+        materialRef.current.uniforms.uSunDirection.value.copy(sunDirection);
+        
+        // Position the visual sun mesh based on subsolar point
+        // Convert subsolar lat/lon to map world coordinates
+        // Map is a 5x5 plane where center (lon=0, lat=0) is at origin
+        const MESH_SCALE = 5.0;
+        const SPHERE_RADIUS = 10.0 * MESH_SCALE;
+        
+        const mode = settingsRef.current.viewMode;
+        // Sun is only visible for certain 3D shapes where it makes sense (not disc/torus/2D)
+        const showSunFor3DMode = ['SPHERE', 'CYLINDER', 'CONE'].includes(mode);
+        const sunShouldBeVisible = showSunFor3DMode && dayNightFadeRef.current > 0.01;
+        sunRef.current.visible = sunShouldBeVisible;
+        
+        // Update sun opacity for fade effect
+        const sunMat = sunRef.current.material as THREE.ShaderMaterial;
+        if (sunMat.uniforms && sunMat.uniforms.uOpacity) {
+          sunMat.uniforms.uOpacity.value = dayNightFadeRef.current;
+        }
+        // Update glow layers opacity too
+        sunRef.current.children.forEach((child) => {
+          const glowMat = (child as THREE.Mesh).material as THREE.ShaderMaterial;
+          if (glowMat.uniforms && glowMat.uniforms.uOpacity) {
+            glowMat.uniforms.uOpacity.value = dayNightFadeRef.current;
+          }
+        });
+        
+        if (showSunFor3DMode) {
+          const sunDistance = 400;
+          
+          if (mode === 'SPHERE') {
+            // For sphere, position sun in 3D space based on spherical direction
+            sunRef.current.position.set(
+              sunDirection.x * sunDistance,
+              sunDirection.y * sunDistance,
+              sunDirection.z * sunDistance
+            );
+          } else if (mode === 'CYLINDER') {
+            // For cylinder, sun orbits around at the subsolar longitude, fixed height based on declination
+            const cylinderRadius = sunDistance;
+            sunRef.current.position.set(
+              Math.sin(sunLongitudeRad) * cylinderRadius,
+              Math.sin(declination) * SPHERE_RADIUS * 0.5,  // Declination affects Y position on cylinder
+              Math.cos(sunLongitudeRad) * cylinderRadius
+            );
+          } else if (mode === 'CONE') {
+            // For cone, similar to cylinder but sun follows the cone's slope
+            const coneRadius = sunDistance;
+            sunRef.current.position.set(
+              Math.sin(sunLongitudeRad) * coneRadius,
+              Math.sin(declination) * SPHERE_RADIUS * 0.3,
+              Math.cos(sunLongitudeRad) * coneRadius
+            );
+          }
+        }
+      }
 
       if (materialRef.current) {
         const mode = settingsRef.current.viewMode;
@@ -910,6 +1216,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         m.uniforms.uDiscT.value = easeInOutCubic(progressRef.current.disc);
         m.uniforms.uTorusT.value = progressRef.current.torus;
         m.uniforms.uShowGrid.value = settingsRef.current.showGrid ? 1.0 : 0.0;
+        m.uniforms.uIs3D.value = is3DMode ? 1.0 : 0.0;
 
         // Update atmosphere visibility (sphere only, more subtle)
         atmosphereLayersRef.current.forEach((layer) => {
