@@ -1,11 +1,13 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import MapCanvas from './components/MapCanvas';
-import { MapSettings, ViewMode, MapLayer } from './types';
-import { 
-  Info, 
-  ChevronRight, 
+import { MapSettings, ViewMode, MapLayer, OverlayLayer } from './types';
+import {
+  Info,
+  ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Rotate3d,
   Layers,
   Activity,
@@ -26,7 +28,9 @@ import {
   Cylinder as CylinderIcon,
   Pyramid,
   Disc as DiscIcon,
-  Earth
+  Earth,
+  Anchor,
+  Footprints
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -36,10 +40,12 @@ const App: React.FC = () => {
     showGrid: true,
     showAtmosphere: true,
     viewMode: 'SPHERE',
-    mapLayer: 'BLUE_MARBLE'
+    mapLayer: 'BLUE_MARBLE',
+    overlayLayer: 'NONE'
   });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
   const last2DMode = useRef<ViewMode>('STANDARD');
 
   const setMode = useCallback((target: ViewMode) => {
@@ -59,6 +65,15 @@ const App: React.FC = () => {
       return { ...s, mapLayer: layer };
     });
   };
+
+  const setOverlay = (overlay: OverlayLayer) => {
+    console.log('✓ setOverlay called with:', overlay);
+    setSettings(s => {
+      console.log('✓ Settings updated to overlayLayer:', overlay);
+      return { ...s, overlayLayer: overlay };
+    });
+  };
+
   const toggleGrid = () => setSettings(s => ({ ...s, showGrid: !s.showGrid }));
   const toggleAtmosphere = () => setSettings(s => ({ ...s, showAtmosphere: !s.showAtmosphere }));
 
@@ -94,6 +109,12 @@ const App: React.FC = () => {
     { id: 'HOT', name: 'Humanitarian', icon: Heart, color: 'text-rose-400' },
     { id: 'STANDARD', name: 'OSM Standard', icon: Navigation, color: 'text-blue-400' },
     { id: 'CARTODARK', name: 'Carto Dark', icon: Moon, color: 'text-indigo-400' },
+  ];
+
+  const overlayLayers: { id: OverlayLayer; name: string; icon: any; color: string }[] = [
+    { id: 'NONE', name: 'No Overlay', icon: Layers, color: 'text-zinc-400' },
+    { id: 'OPENSEAMAP', name: 'Maritime/Nautical', icon: Anchor, color: 'text-blue-400' },
+    { id: 'HIKING_TRAILS', name: 'Hiking Trails', icon: Footprints, color: 'text-green-400' },
   ];
 
   return (
@@ -135,6 +156,32 @@ const App: React.FC = () => {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-5">
+              <button
+                onClick={() => setIsOverlayOpen(!isOverlayOpen)}
+                className="w-full flex items-center justify-between text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em] hover:text-zinc-400 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Activity size={12} />
+                  Overlay Layers
+                </div>
+                {isOverlayOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {isOverlayOpen && (
+                <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
+                  {overlayLayers.map(layer => (
+                    <button key={layer.id} onClick={() => setOverlay(layer.id)}
+                      className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300
+                        ${settings.overlayLayer === layer.id ? 'bg-white text-zinc-950 border-white shadow-lg' : 'bg-zinc-900 text-zinc-400 border-zinc-700 hover:bg-zinc-800'}`}>
+                      <layer.icon size={20} className={settings.overlayLayer === layer.id ? 'text-zinc-950' : layer.color} />
+                      <span className="text-[8px] font-black uppercase tracking-widest text-center">{layer.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-6">

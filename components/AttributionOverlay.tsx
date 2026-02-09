@@ -1,8 +1,9 @@
 import React from 'react';
-import { MapLayer } from '../types';
+import { MapLayer, OverlayLayer } from '../types';
 
 interface AttributionOverlayProps {
   mapLayer: MapLayer;
+  overlayLayer: OverlayLayer;
   sidebarOffset: number;
 }
 
@@ -63,29 +64,70 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
   }
 };
 
-const AttributionOverlay: React.FC<AttributionOverlayProps> = ({ mapLayer, sidebarOffset }) => {
+const OVERLAY_ATTRIBUTIONS: Record<Exclude<OverlayLayer, 'NONE'>, Attribution> = {
+  OPENSEAMAP: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'OpenSeaMap', url: 'http://www.openseamap.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  },
+  HIKING_TRAILS: {
+    text: 'Overlay: © ',
+    links: [
+      { text: 'Waymarked Trails', url: 'https://waymarkedtrails.org/' },
+      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+    ]
+  }
+};
+
+const AttributionOverlay: React.FC<AttributionOverlayProps> = ({ mapLayer, overlayLayer, sidebarOffset }) => {
   const attribution = ATTRIBUTIONS[mapLayer];
+  const overlayAttribution = overlayLayer !== 'NONE' ? OVERLAY_ATTRIBUTIONS[overlayLayer] : null;
 
   return (
     <div
       className="fixed bottom-4 z-50 bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-2 pointer-events-auto transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]"
       style={{ right: `${sidebarOffset + 16}px` }}
     >
-      <div className="flex items-center text-[9px] font-mono text-zinc-300 tracking-wide">
-        <span>{attribution.text}</span>
-        {attribution.links.map((link, index) => (
-          <React.Fragment key={link.url}>
-            {index > 0 && <span className="mx-1">|</span>}
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-white hover:underline transition-colors"
-            >
-              {link.text}
-            </a>
-          </React.Fragment>
-        ))}
+      <div className="flex flex-col gap-1 text-[9px] font-mono text-zinc-300 tracking-wide">
+        {/* Base map attribution */}
+        <div className="flex items-center">
+          <span>{attribution.text}</span>
+          {attribution.links.map((link, index) => (
+            <React.Fragment key={link.url}>
+              {index > 0 && <span className="mx-1">|</span>}
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white hover:underline transition-colors"
+              >
+                {link.text}
+              </a>
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Overlay attribution if active */}
+        {overlayAttribution && (
+          <div className="flex items-center">
+            <span>{overlayAttribution.text}</span>
+            {overlayAttribution.links.map((link, index) => (
+              <React.Fragment key={link.url}>
+                {index > 0 && <span className="mx-1">|</span>}
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white hover:underline transition-colors"
+                >
+                  {link.text}
+                </a>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

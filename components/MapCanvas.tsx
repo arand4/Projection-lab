@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MapSettings, MapLayer } from '../types';
+import { MapSettings, MapLayer, OverlayLayer } from '../types';
 import AttributionOverlay from './AttributionOverlay';
 
 interface MapCanvasProps {
@@ -18,6 +18,11 @@ const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'sta
   CARTOVOYAGER: { url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager', format: 'xyz' },
   BLUE_MARBLE: { url: `${import.meta.env.BASE_URL}blue-marble.jpg`, format: 'static' },
   NASA_VIIRS: { url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default', format: 'xyz' }
+};
+
+const OVERLAY_SERVERS: Record<Exclude<OverlayLayer, 'NONE'>, { url: string; format: 'xyz' }> = {
+  OPENSEAMAP: { url: 'https://tiles.openseamap.org/seamark', format: 'xyz' },
+  HIKING_TRAILS: { url: 'https://tile.waymarkedtrails.org/hiking', format: 'xyz' }
 };
 
 async function createStaticTexture(url: string): Promise<THREE.Texture> {
@@ -52,23 +57,28 @@ async function createStaticTexture(url: string): Promise<THREE.Texture> {
   });
 }
 
-async function createStitchedTexture(urlPattern: (x: number, y: number, z: number) => string, zoom: number): Promise<THREE.CanvasTexture> {
+async function createStitchedTexture(urlPattern: (x: number, y: number, z: number) => string, zoom: number, isOverlay: boolean = false): Promise<THREE.CanvasTexture> {
   const tileSize = 256;
   const numTiles = Math.pow(2, zoom);
-  console.log(`Creating stitched texture with ${numTiles}x${numTiles} tiles at zoom ${zoom}`);
+  console.log(`Creating stitched texture with ${numTiles}x${numTiles} tiles at zoom ${zoom}, overlay: ${isOverlay}`);
   const canvas = document.createElement('canvas');
   canvas.width = numTiles * tileSize;
   canvas.height = numTiles * tileSize;
-  const ctx = canvas.getContext('2d');
-  
+  const ctx = canvas.getContext('2d', { alpha: true });
+
   if (!ctx) throw new Error('Could not create canvas context');
 
-  // Fill with a gradient background first
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, '#1a3a52');
-  gradient.addColorStop(1, '#0d1b2a');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (isOverlay) {
+    // For overlays, start with fully transparent background
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  } else {
+    // Fill with a gradient background for base maps
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#1a3a52');
+    gradient.addColorStop(1, '#0d1b2a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
   const tilePromises: Promise<void>[] = [];
   let loadedCount = 0;
@@ -110,9 +120,9 @@ async function createStitchedTexture(urlPattern: (x: number, y: number, z: numbe
   if (failedUrls.length > 0) {
     console.warn(`Failed URLs (${failedUrls.length}): ${failedUrls.slice(0, 2).join(', ')}${failedUrls.length > 2 ? ' ...' : ''}`);
   }
-  
-  // If no tiles loaded, add some visual feedback
-  if (loadedCount === 0) {
+
+  // If no tiles loaded for base map, add some visual feedback
+  if (!isOverlay && loadedCount === 0) {
     ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
     ctx.font = 'bold 50px Arial';
     ctx.textAlign = 'center';
@@ -121,13 +131,15 @@ async function createStitchedTexture(urlPattern: (x: number, y: number, z: numbe
     ctx.font = '20px Arial';
     ctx.fillText('Check console', canvas.width / 2, canvas.height / 2 + 30);
   }
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping; 
+  texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.anisotropy = 16;
+  texture.format = isOverlay ? THREE.RGBAFormat : THREE.RGBFormat;
+  texture.needsUpdate = true;
   return texture;
 }
 
@@ -245,11 +257,11 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
     // Handle tiled textures
     const mapUrlPattern = (x: number, y: number, z: number) => {
-      // NASA GIBS uses a special format with date
+      // NASA GIBS layers use a special format with date
       if (settings.mapLayer === 'NASA_VIIRS') {
-        // Get today's date in YYYY-MM-DD format (use yesterday to ensure data availability)
+        // Get yesterday's date in YYYY-MM-DD format (use yesterday to ensure data availability)
         const date = new Date();
-        date.setDate(date.getDate() - 1); // Use yesterday's data to ensure availability
+        date.setDate(date.getDate() - 1);
         const dateStr = date.toISOString().split('T')[0];
         return `${server.url}/${dateStr}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`;
       }
@@ -276,6 +288,43 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       setLoading(false);
     });
   }, [settings.mapLayer]);
+
+  useEffect(() => {
+    const overlayLayer = settings.overlayLayer;
+
+    if (overlayLayer === 'NONE') {
+      // Disable overlay
+      if (materialRef.current) {
+        materialRef.current.uniforms.uOverlayVisible.value = 0.0;
+      }
+      console.log('Overlay disabled');
+      return;
+    }
+
+    // Load overlay texture
+    const overlayServer = OVERLAY_SERVERS[overlayLayer];
+    const overlayUrlPattern = (x: number, y: number, z: number) => {
+      return `${overlayServer.url}/${z}/${x}/${y}.png`;
+    };
+
+    console.log('Loading overlay texture for layer:', overlayLayer);
+    console.log('Sample overlay URL:', overlayUrlPattern(0, 0, 4));
+
+    createStitchedTexture(overlayUrlPattern, 4, true).then((newOverlayTexture) => {
+      console.log('Overlay texture loaded successfully');
+      if (materialRef.current) {
+        const oldTexture = materialRef.current.uniforms.uOverlayTexture.value;
+        if (oldTexture instanceof THREE.Texture && oldTexture.image) oldTexture.dispose();
+        materialRef.current.uniforms.uOverlayTexture.value = newOverlayTexture;
+        materialRef.current.uniforms.uOverlayVisible.value = 1.0;
+      }
+    }).catch((error) => {
+      console.error('Failed to load overlay texture:', error);
+      if (materialRef.current) {
+        materialRef.current.uniforms.uOverlayVisible.value = 0.0;
+      }
+    });
+  }, [settings.overlayLayer]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -464,6 +513,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       varying vec2 vUv;
       varying vec2 vFinalUv;
       uniform sampler2D uTexture;
+      uniform sampler2D uOverlayTexture;
+      uniform float uOverlayVisible;
       uniform float uShowGrid;
       uniform float uUseEquirectangular;
 
@@ -486,6 +537,13 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         }
 
         vec4 texColor = texture2D(uTexture, texCoords);
+
+        // Blend overlay texture if visible
+        if (uOverlayVisible > 0.5) {
+          vec4 overlayColor = texture2D(uOverlayTexture, texCoords);
+          // Blend overlay on top of base using alpha compositing
+          texColor.rgb = mix(texColor.rgb, overlayColor.rgb, overlayColor.a);
+        }
 
         float grid = 0.0;
         if (uShowGrid > 0.5) {
@@ -513,10 +571,13 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         uRobinsonT: { value: 0.0 },
         uInfiniteT: { value: 0.0 },
         uTexture: { value: createPlaceholderTexture() },
+        uOverlayTexture: { value: createPlaceholderTexture() },
+        uOverlayVisible: { value: 0.0 },
         uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 },
         uUseEquirectangular: { value: 0.0 }
       },
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      transparent: false
     });
     materialRef.current = material;
 
@@ -868,7 +929,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
                 </div>
             </div>
         )}
-        <AttributionOverlay mapLayer={settings.mapLayer} sidebarOffset={sidebarOffset} />
+        <AttributionOverlay mapLayer={settings.mapLayer} overlayLayer={settings.overlayLayer} sidebarOffset={sidebarOffset} />
     </div>
   );
 };

@@ -17,7 +17,16 @@ export type ViewMode =
   | 'CONE'
   | 'DISC';
 
-export type MapLayer = 'STANDARD' | 'HOT' | 'OPENTOPOMAP' | 'CARTODARK' | 'CARTOVOYAGER' | 'BLUE_MARBLE' | 'NASA_VIIRS';
+export type MapLayer =
+  | 'STANDARD'
+  | 'HOT'
+  | 'OPENTOPOMAP'
+  | 'CARTODARK'
+  | 'CARTOVOYAGER'
+  | 'BLUE_MARBLE'
+  | 'NASA_VIIRS';
+
+export type OverlayLayer = 'NONE' | 'OPENSEAMAP' | 'HIKING_TRAILS';
 
 export interface MapSettings {
   zoom: number;
@@ -26,4 +35,5 @@ export interface MapSettings {
   showAtmosphere: boolean;
   viewMode: ViewMode;
   mapLayer: MapLayer;
+  overlayLayer: OverlayLayer;
 }
