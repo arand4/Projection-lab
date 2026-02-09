@@ -154,6 +154,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
   const settingsRef = useRef<MapSettings>(settings);
   const sidebarOffsetRef = useRef<number>(sidebarOffset);
   const currentSidebarOffsetRef = useRef<number>(sidebarOffset);
@@ -356,10 +357,12 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.autoRotate = false;
+    controls.autoRotateSpeed = 1.0;
     controls.enableZoom = true;
     controls.enablePan = true;
     controls.enableRotate = true;
     controls.minDistance = 5; // Will be dynamically updated based on shape
+    controlsRef.current = controls;
 
     // Debug mouse events
     renderer.domElement.addEventListener('mousedown', (e) => {
@@ -592,6 +595,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     const geometry = new THREE.PlaneGeometry(1, 1, 400, 400);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.scale.set(5, 5, 5);
+    mesh.frustumCulled = false; // Disable frustum culling - the vertex shader transforms extend beyond the original bounds
     scene.add(mesh);
     console.log('✓ Plane mesh added to scene with', geometry.attributes.position.count, 'vertices');
     console.log('✓ Initial mode:', settingsRef.current.viewMode);
@@ -829,6 +833,15 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
           } else {
             allowMorphRef.current = true;
           }
+          
+          // Reset camera target when switching between 2D and 3D modes
+          const was3D = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(lastModeRef.current);
+          const is3D = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
+          if (was3D !== is3D) {
+            // Reset target to origin when switching between 2D/3D
+            controls.target.set(0, 0, 0);
+          }
+          
           lastModeRef.current = mode;
         }
 
@@ -878,8 +891,12 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         });
 
         const torusT = easeInOutCubic(progressRef.current.torus);
-        // Torus center hole is at z = -25 (based on R_hole = 25 in shader)
-        controls.target.set(0, 0, -25 * torusT);
+        // Only update the target for 3D modes - 2D modes need the target to stay where user panned
+        const is3DMode = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
+        if (is3DMode) {
+          // Torus center hole is at z = -25 (based on R_hole = 25 in shader)
+          controls.target.set(0, 0, -25 * torusT);
+        }
 
         const m = materialRef.current;
         m.uniforms.uInfiniteT.value = easeInOutCubic(progressRef.current.infinite);
@@ -903,9 +920,43 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         });
       }
 
+      // Update auto-rotate setting
+      controls.autoRotate = settingsRef.current.autoRotate;
+
+      // Update mouse controls based on 2D vs 3D mode
+      // 2D modes: Left-click pans (strafe), Right-click orbits
+      // 3D modes: Left-click orbits, Right-click pans
+      const currentMode = settingsRef.current.viewMode;
+      const is2DMode = ['STANDARD', 'MERCATOR', 'GALL_PETERS', 'SINUSOIDAL', 'ROBINSON', 'INFINITE'].includes(currentMode);
+      if (is2DMode) {
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.ROTATE
+        };
+        controls.touches = {
+          ONE: THREE.TOUCH.PAN,
+          TWO: THREE.TOUCH.DOLLY_ROTATE
+        };
+        controls.screenSpacePanning = true;
+        controls.panSpeed = 1.5; // Faster panning for 2D navigation
+      } else {
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN
+        };
+        controls.touches = {
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN
+        };
+        controls.panSpeed = 1.0; // Default pan speed for 3D
+        controls.screenSpacePanning = true;
+      }
+
       controls.update();
 
-      // Camera collision detection for 3D shapes
+      // Camera collision detection
       const mode = settingsRef.current.viewMode;
       const MESH_SCALE = 5.0;
       const SPHERE_RADIUS = 10.0 * MESH_SCALE; // 50
@@ -984,6 +1035,17 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
           if (distFromAxisXZ < DISC_MAX_RADIUS && Math.abs(camPos.y) < MIN_SURFACE_DISTANCE) {
             camera.position.y = camPos.y >= 0 ? MIN_SURFACE_DISTANCE : -MIN_SURFACE_DISTANCE;
           }
+        }
+      } else {
+        // 2D mode: prevent camera from getting too close to the map plane (at z=0)
+        // The map extends in X and Y, camera should stay at positive Z
+        const MIN_2D_DISTANCE = 5; // Minimum distance from the 2D plane
+        if (camera.position.z < MIN_2D_DISTANCE) {
+          camera.position.z = MIN_2D_DISTANCE;
+        }
+        // Keep target on or in front of the map plane
+        if (controls.target.z < 0) {
+          controls.target.z = 0;
         }
       }
 

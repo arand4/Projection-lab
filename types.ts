@@ -33,6 +33,7 @@ export interface MapSettings {
   rotation: Vector2;
   showGrid: boolean;
   showAtmosphere: boolean;
+  autoRotate: boolean;
   viewMode: ViewMode;
   mapLayer: MapLayer;
   overlayLayer: OverlayLayer;
