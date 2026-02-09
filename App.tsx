@@ -321,6 +321,11 @@ const App: React.FC = () => {
               {isSettingsOpen && (
                 <div className="space-y-4 animate-in fade-in duration-300">
                   <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-2"><Rotate3d size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Auto Rotate</span></div>
+                    <button onClick={toggleAutoRotate} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.autoRotate ? 'bg-amber-600 border-amber-400 shadow-[0_0_10px_rgba(217,119,6,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.autoRotate ? 'translate-x-5' : 'translate-x-0'}`} /></button>
+                  </div>
+
+                  <div className="flex items-center justify-between px-2">
                     <div className="flex items-center gap-2"><GridIcon size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Geo Grid</span></div>
                     <button onClick={toggleGrid} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.showGrid ? 'bg-emerald-600 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.showGrid ? 'translate-x-5' : 'translate-x-0'}`} /></button>
                   </div>
@@ -328,11 +333,6 @@ const App: React.FC = () => {
                   <div className="flex items-center justify-between px-2">
                     <div className="flex items-center gap-2"><Cloud size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Atmosphere</span></div>
                     <button onClick={toggleAtmosphere} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.viewMode === 'SPHERE' && settings.showAtmosphere ? 'bg-blue-600 border-blue-400 shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.viewMode === 'SPHERE' && settings.showAtmosphere ? 'translate-x-5' : 'translate-x-0'}`} /></button>
-                  </div>
-
-                  <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-2"><Rotate3d size={12} className="text-zinc-500" /><span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Auto Rotate</span></div>
-                    <button onClick={toggleAutoRotate} className={`w-10 h-5 rounded-full transition-all duration-500 relative border ${settings.autoRotate ? 'bg-amber-600 border-amber-400 shadow-[0_0_10px_rgba(217,119,6,0.3)]' : 'bg-zinc-900 border-zinc-800'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-all duration-500 ${settings.autoRotate ? 'translate-x-5' : 'translate-x-0'}`} /></button>
                   </div>
 
                   <div className="flex items-center justify-between px-2">

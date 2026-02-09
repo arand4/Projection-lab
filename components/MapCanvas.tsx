@@ -1196,14 +1196,27 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset, resetOrb
           }
         });
 
-        const torusT = easeInOutCubic(progressRef.current.torus);
         // Only update the target for 3D modes - 2D modes need the target to stay where user panned
         const is3DMode = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
         if (is3DMode) {
-          // Torus center hole is at z = -25 (based on R_hole = 25 in shader)
-          controls.target.set(0, 0, -25 * torusT);
+          // Torus center calculation:
+          // Shader R_hole = 25, but mesh is scaled by 5, so world R_hole = 125
+          // The torus ring center-line is at z = -R_hole in world space
+          const MESH_SCALE = 5.0;
+          const R_HOLE_WORLD = 25.0 * MESH_SCALE; // = 125
+          
+          const torusProgress = progressRef.current.torus;
+          // The wrap phase (when the ring forms) starts at progress 0.5
+          const tWrap = Math.max(0, Math.min(1, torusProgress * 2.0 - 1.0));
+          // Match shader's ease function: cubic ease-in-out
+          const easedWrap = tWrap < 0.5 
+            ? 4.0 * tWrap * tWrap * tWrap 
+            : 1.0 - Math.pow(-2.0 * tWrap + 2.0, 3) / 2.0;
+          const targetZ = -R_HOLE_WORLD * easedWrap;
+          
+          controls.target.set(0, 0, targetZ);
         }
-
+        
         const m = materialRef.current;
         m.uniforms.uInfiniteT.value = easeInOutCubic(progressRef.current.infinite);
         m.uniforms.uMercatorT.value = easeInOutCubic(progressRef.current.mercator);
@@ -1276,8 +1289,10 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset, resetOrb
       const coneT = progressRef.current.cone;
       const discT = progressRef.current.disc;
       
-      // Calculate if we're in any 3D mode
-      const is3D = sphereT > 0.01 || torusT > 0.01 || cylinderT > 0.01 || coneT > 0.01 || discT > 0.01;
+      // Calculate if we're in any 3D mode - use both mode AND progress to avoid race conditions
+      const is3DMode_collision = ['SPHERE', 'TORUS', 'CYLINDER', 'CONE', 'DISC'].includes(mode);
+      const has3DProgress = sphereT > 0.01 || torusT > 0.01 || cylinderT > 0.01 || coneT > 0.01 || discT > 0.01;
+      const is3D = is3DMode_collision || has3DProgress;
       
       if (is3D) {
         const camPos = camera.position.clone();
