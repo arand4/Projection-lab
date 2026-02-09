@@ -33,11 +33,16 @@ Link: https://arand4.github.io/Projection-lab/
 - Torus
 
 ### ✨ Visual Features
+- **Day/Night Terminator** - Real-time day/night shadow based on sun position
+- **Sun Visualization** - 3D sun with realistic glow effect (Sphere, Cylinder, Cone modes)
+- **Time & Date Controls** - Adjust time of day and date to see how sunlight changes
+- **Specular Reflection** - Sun glint on oceans in 3D modes
 - **Atmospheric Effects** - Subtle atmospheric glow on sphere projection with manual toggle
 - **Grid Overlay** - Optional coordinate grid for reference
-- **Smooth Morphing** - Seamless transitions between projections (transitions could get some smoothing)
-- **Interactive Controls** - Orbit camera with zoom and rotation
-- **Star Field** - Ambient space background
+- **Smooth Morphing** - Seamless transitions between projections
+- **Interactive Controls** - Orbit camera with zoom and rotation (swapped controls for 2D/3D)
+- **Star Field** - Ambient space background with toggle
+- **Reset Orbit** - One-click camera angle reset
 
 ## Technologies
 
