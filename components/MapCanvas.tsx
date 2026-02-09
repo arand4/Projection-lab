@@ -10,15 +10,48 @@ interface MapCanvasProps {
   sidebarOffset: number;
 }
 
-const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' }> = {
+const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'static' }> = {
   CYCLOSM: { url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm', format: 'xyz' },
   STANDARD: { url: 'https://tile.openstreetmap.org', format: 'xyz' },
   HOT: { url: 'https://a.tile.openstreetmap.fr/hot', format: 'xyz' },
   OPENTOPOMAP: { url: 'https://a.tile.opentopomap.org', format: 'xyz' },
   CARTODARK: { url: 'https://a.basemaps.cartocdn.com/dark_all', format: 'xyz' },
   CARTOVOYAGER: { url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager', format: 'xyz' },
-  SATELLITE: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile', format: 'xyz' }
+  BLUE_MARBLE: { url: `${import.meta.env.BASE_URL}blue-marble.jpg`, format: 'static' },
+  NASA_VIIRS: { url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default', format: 'xyz' }
 };
+
+async function createStaticTexture(url: string): Promise<THREE.Texture> {
+  console.log(`Loading static texture from: ${url}`);
+  return new Promise((resolve, reject) => {
+    const loader = new THREE.TextureLoader();
+    // Don't use crossOrigin for images that don't support CORS
+    // loader.setCrossOrigin('anonymous');
+
+    loader.load(
+      url,
+      (texture) => {
+        console.log('✓ Static texture loaded successfully');
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.anisotropy = 16;
+        resolve(texture);
+      },
+      (progress) => {
+        if (progress.lengthComputable) {
+          const percent = (progress.loaded / progress.total * 100).toFixed(0);
+          console.log(`Loading texture: ${percent}%`);
+        }
+      },
+      (error) => {
+        console.error('✗ Failed to load static texture:', error);
+        reject(error);
+      }
+    );
+  });
+}
 
 async function createStitchedTexture(urlPattern: (x: number, y: number, z: number) => string, zoom: number): Promise<THREE.CanvasTexture> {
   const tileSize = 256;
@@ -189,13 +222,41 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
 
   useEffect(() => {
     setLoading(true);
+    const server = TILE_SERVERS[settings.mapLayer];
+
+    // Handle static texture (like NASA Blue Marble)
+    if (server.format === 'static') {
+      console.log('Loading static texture for layer:', settings.mapLayer);
+      createStaticTexture(server.url).then((newTexture) => {
+        console.log('Static texture loaded successfully');
+        if (materialRef.current) {
+          const oldTexture = materialRef.current.uniforms.uTexture.value;
+          if (oldTexture instanceof THREE.Texture && oldTexture.image) oldTexture.dispose();
+          materialRef.current.uniforms.uTexture.value = newTexture;
+          // Static textures like Blue Marble are equirectangular
+          materialRef.current.uniforms.uUseEquirectangular.value = 1.0;
+        }
+        setLoading(false);
+      }).catch((error) => {
+        console.error('Failed to load static texture:', error);
+        setLoading(false);
+      });
+      return;
+    }
+
+    // Handle tiled textures
     const mapUrlPattern = (x: number, y: number, z: number) => {
-      const server = TILE_SERVERS[settings.mapLayer];
-      // ESRI World Imagery uses z/y/x format, others use z/x/y
-      const isEsri = settings.mapLayer === 'SATELLITE';
-      const url = isEsri
-        ? `${server.url}/${z}/${y}/${x}.jpg`
-        : `${server.url}/${z}/${x}/${y}.png`;
+      // NASA GIBS uses a special format with date
+      if (settings.mapLayer === 'NASA_VIIRS') {
+        // Get today's date in YYYY-MM-DD format (use yesterday to ensure data availability)
+        const date = new Date();
+        date.setDate(date.getDate() - 1); // Use yesterday's data to ensure availability
+        const dateStr = date.toISOString().split('T')[0];
+        return `${server.url}/${dateStr}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`;
+      }
+
+      // Standard tile format z/x/y
+      const url = `${server.url}/${z}/${x}/${y}.png`;
       return url;
     };
 
@@ -207,6 +268,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         const oldTexture = materialRef.current.uniforms.uTexture.value;
         if (oldTexture instanceof THREE.Texture && oldTexture.image) oldTexture.dispose();
         materialRef.current.uniforms.uTexture.value = newTexture;
+        // Tiled textures are in Web Mercator projection
+        materialRef.current.uniforms.uUseEquirectangular.value = 0.0;
       }
       setLoading(false);
     }).catch((error) => {
@@ -403,21 +466,28 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       varying vec2 vFinalUv;
       uniform sampler2D uTexture;
       uniform float uShowGrid;
-      
+      uniform float uUseEquirectangular;
+
       #define PI 3.14159265359
 
       float latToMercator(float lat) {
-        float latLimit = 0.005; 
+        float latLimit = 0.005;
         float clampedLat = clamp(lat, latLimit, 1.0 - latLimit);
         float latRad = (clampedLat - 0.5) * PI;
         return (log(tan(PI / 4.0 + latRad / 2.0)) / PI + 1.0) / 2.0;
       }
 
       void main() {
-        // Map to texture space using mercator adjustment for correctness on conformal modes
-        float mercY = latToMercator(vFinalUv.y);
-        vec4 texColor = texture2D(uTexture, vec2(vFinalUv.x, mercY));
-        
+        // Apply Mercator transformation only for tiled sources (Web Mercator projection)
+        // Skip for equirectangular sources like Blue Marble
+        vec2 texCoords = vFinalUv;
+        if (uUseEquirectangular < 0.5) {
+          // Tiled sources need Mercator adjustment
+          texCoords.y = latToMercator(vFinalUv.y);
+        }
+
+        vec4 texColor = texture2D(uTexture, texCoords);
+
         float grid = 0.0;
         if (uShowGrid > 0.5) {
           vec2 gridSpacing = vec2(18.0, 10.0);
@@ -425,7 +495,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
           float line = step(0.98, gridUv.x) + step(0.98, gridUv.y);
           grid = clamp(line * 0.08, 0.0, 0.5);
         }
-        
+
         gl_FragColor = vec4(texColor.rgb + grid, texColor.a);
       }
     `;
@@ -444,7 +514,8 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
         uRobinsonT: { value: 0.0 },
         uInfiniteT: { value: 0.0 },
         uTexture: { value: createPlaceholderTexture() },
-        uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 }
+        uShowGrid: { value: settingsRef.current.showGrid ? 1.0 : 0.0 },
+        uUseEquirectangular: { value: 0.0 }
       },
       side: THREE.DoubleSide
     });

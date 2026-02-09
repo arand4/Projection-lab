@@ -27,7 +27,8 @@ Link: https://arand4.github.io/Projection-lab/
 
 ### 🌍 Map Layers
 - **CyclOSM** - Topographic cycling maps
-- **ESRI Satellite** - High-resolution satellite imagery
+- **NASA Blue Marble** - High-resolution cloudless Earth imagery from NASA
+- **NASA VIIRS** - Daily updated satellite imagery from NASA EOSDIS
 - **OpenTopoMap** - Detailed topographic maps
 - **OSM Standard** - OpenStreetMap standard style
 - **Humanitarian** - HOT (Humanitarian OpenStreetMap Team) style
@@ -57,7 +58,8 @@ Link: https://arand4.github.io/Projection-lab/
 - [SRTM](https://www2.jpl.nasa.gov/srtm/)
 - [OpenTopoMap](https://opentopomap.org/)
 - [CARTO](https://carto.com/attributions)
-- [Esri, Maxar, Earthstar Geographics, and the GIS User Community](https://www.esri.com/en-us/legal/terms/full-master-agreement)
+- [NASA Blue Marble](https://visibleearth.nasa.gov/collection/1484/blue-marble) - Imagery courtesy of NASA's Earth Observatory
+- [NASA EOSDIS GIBS](https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs) - VIIRS satellite imagery
 
 ## License
 

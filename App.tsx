@@ -36,7 +36,7 @@ const App: React.FC = () => {
     showGrid: true,
     showAtmosphere: true,
     viewMode: 'SPHERE',
-    mapLayer: 'SATELLITE'
+    mapLayer: 'BLUE_MARBLE'
   });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -89,7 +89,8 @@ const App: React.FC = () => {
 
   const mapLayers: { id: MapLayer; name: string; icon: any; color: string }[] = [
     { id: 'CYCLOSM', name: 'CyclOSM (Topo)', icon: Bike, color: 'text-emerald-400' },
-    { id: 'SATELLITE', name: 'ESRI Satellite', icon: Cloud, color: 'text-sky-400' },
+    { id: 'BLUE_MARBLE', name: 'NASA Blue Marble', icon: Earth, color: 'text-cyan-400' },
+    { id: 'NASA_VIIRS', name: 'NASA VIIRS', icon: Globe, color: 'text-purple-400' },
     { id: 'OPENTOPOMAP', name: 'OpenTopoMap', icon: Mountain, color: 'text-amber-400' },
     { id: 'STANDARD', name: 'OSM Standard', icon: Navigation, color: 'text-blue-400' },
     { id: 'HOT', name: 'Humanitarian', icon: Heart, color: 'text-rose-400' },

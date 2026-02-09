@@ -54,10 +54,18 @@ const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
       { text: 'CARTO', url: 'https://carto.com/attributions' }
     ]
   },
-  SATELLITE: {
-    text: 'Source: ',
+  BLUE_MARBLE: {
+    text: 'Imagery: ',
     links: [
-      { text: 'Esri, Maxar, Earthstar Geographics, and the GIS User Community', url: 'https://www.esri.com/en-us/legal/terms/full-master-agreement' }
+      { text: 'NASA Blue Marble', url: 'https://visibleearth.nasa.gov/collection/1484/blue-marble' },
+      { text: 'NASA Goddard Space Flight Center', url: 'https://www.nasa.gov/goddard' }
+    ]
+  },
+  NASA_VIIRS: {
+    text: 'Imagery: ',
+    links: [
+      { text: 'NASA EOSDIS GIBS', url: 'https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs' },
+      { text: 'VIIRS', url: 'https://www.nasa.gov/mission_pages/NPP/mission_overview/index.html' }
     ]
   }
 };
