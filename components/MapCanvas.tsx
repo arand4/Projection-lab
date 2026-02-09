@@ -359,6 +359,7 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
     controls.enableZoom = true;
     controls.enablePan = true;
     controls.enableRotate = true;
+    controls.minDistance = 5; // Will be dynamically updated based on shape
 
     // Debug mouse events
     renderer.domElement.addEventListener('mousedown', (e) => {
@@ -903,6 +904,89 @@ const MapCanvas: React.FC<MapCanvasProps> = ({ settings, sidebarOffset }) => {
       }
 
       controls.update();
+
+      // Camera collision detection for 3D shapes
+      const mode = settingsRef.current.viewMode;
+      const MESH_SCALE = 5.0;
+      const SPHERE_RADIUS = 10.0 * MESH_SCALE; // 50
+      const MIN_SURFACE_DISTANCE = 5; // Minimum distance from surface
+      
+      // Get current 3D shape progress
+      const sphereT = progressRef.current.sphere;
+      const torusT = progressRef.current.torus;
+      const cylinderT = progressRef.current.cylinder;
+      const coneT = progressRef.current.cone;
+      const discT = progressRef.current.disc;
+      
+      // Calculate if we're in any 3D mode
+      const is3D = sphereT > 0.01 || torusT > 0.01 || cylinderT > 0.01 || coneT > 0.01 || discT > 0.01;
+      
+      if (is3D) {
+        const camPos = camera.position.clone();
+        const target = controls.target.clone();
+        let minAllowedDistance = 0;
+        
+        if (sphereT > 0.5) {
+          // Sphere: simple radial distance from origin
+          const distFromCenter = camPos.length();
+          minAllowedDistance = SPHERE_RADIUS + MIN_SURFACE_DISTANCE;
+          if (distFromCenter < minAllowedDistance) {
+            camPos.normalize().multiplyScalar(minAllowedDistance);
+            camera.position.copy(camPos);
+          }
+        } else if (torusT > 0.5) {
+          // Torus: center is at (0, 0, -125) in world space
+          const R_HOLE = 25.0 * MESH_SCALE; // Major radius = 125
+          const R_TUBE = 5.0 * MESH_SCALE;  // Tube radius ≈ 25
+          const torusCenter = new THREE.Vector3(0, 0, -R_HOLE);
+          
+          // Distance from camera to torus axis (the ring center)
+          const camToCenter = camPos.clone().sub(torusCenter);
+          const camToAxisXZ = new THREE.Vector2(camToCenter.x, camToCenter.z);
+          const distToAxis = camToAxisXZ.length();
+          
+          // Distance from the tube surface
+          const distFromRingCenter = Math.abs(distToAxis - R_HOLE);
+          const distFromTubeSurface = Math.sqrt(distFromRingCenter * distFromRingCenter + camToCenter.y * camToCenter.y) - R_TUBE;
+          
+          if (distFromTubeSurface < MIN_SURFACE_DISTANCE) {
+            // Push camera away from tube surface
+            const pushDir = camToCenter.clone().normalize();
+            const pushAmount = MIN_SURFACE_DISTANCE - distFromTubeSurface;
+            camera.position.add(pushDir.multiplyScalar(pushAmount));
+          }
+        } else if (cylinderT > 0.5) {
+          // Cylinder: check XZ distance from Y axis
+          const distFromAxisXZ = Math.sqrt(camPos.x * camPos.x + camPos.z * camPos.z);
+          minAllowedDistance = SPHERE_RADIUS + MIN_SURFACE_DISTANCE;
+          if (distFromAxisXZ < minAllowedDistance) {
+            const scale = minAllowedDistance / distFromAxisXZ;
+            camera.position.x *= scale;
+            camera.position.z *= scale;
+          }
+        } else if (coneT > 0.5) {
+          // Cone: radius varies with Y, max at bottom
+          const CONE_MAX_RADIUS = 1.1 * SPHERE_RADIUS;
+          const CONE_HEIGHT = Math.PI * SPHERE_RADIUS; // approximate
+          const normalizedY = (camPos.y / CONE_HEIGHT) + 0.5; // 0 at bottom, 1 at top
+          const coneRadiusAtY = CONE_MAX_RADIUS * (1.1 - Math.max(0, Math.min(1, normalizedY)));
+          const distFromAxisXZ = Math.sqrt(camPos.x * camPos.x + camPos.z * camPos.z);
+          minAllowedDistance = coneRadiusAtY + MIN_SURFACE_DISTANCE;
+          if (distFromAxisXZ < minAllowedDistance && coneRadiusAtY > 0) {
+            const scale = minAllowedDistance / distFromAxisXZ;
+            camera.position.x *= scale;
+            camera.position.z *= scale;
+          }
+        } else if (discT > 0.5) {
+          // Disc: flat surface at y=0, push camera above/below
+          const DISC_MAX_RADIUS = 2.0 * SPHERE_RADIUS;
+          const distFromAxisXZ = Math.sqrt(camPos.x * camPos.x + camPos.z * camPos.z);
+          if (distFromAxisXZ < DISC_MAX_RADIUS && Math.abs(camPos.y) < MIN_SURFACE_DISTANCE) {
+            camera.position.y = camPos.y >= 0 ? MIN_SURFACE_DISTANCE : -MIN_SURFACE_DISTANCE;
+          }
+        }
+      }
+
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     };
