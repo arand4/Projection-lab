@@ -17,7 +17,7 @@ export type ViewMode =
   | 'CONE'
   | 'DISC';
 
-export type MapLayer = 'CYCLOSM' | 'STANDARD' | 'HOT' | 'OPENTOPOMAP' | 'CARTODARK' | 'CARTOVOYAGER' | 'BLUE_MARBLE' | 'NASA_VIIRS';
+export type MapLayer = 'STANDARD' | 'HOT' | 'OPENTOPOMAP' | 'CARTODARK' | 'CARTOVOYAGER' | 'BLUE_MARBLE' | 'NASA_VIIRS';
 
 export interface MapSettings {
   zoom: number;

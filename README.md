@@ -9,30 +9,28 @@ Link: https://arand4.github.io/Projection-lab/
 
 ## Features
 
-### 🗺️ Map Projections
-- **2D Projections:**
-  - Standard (Plate Carrée)
-  - Mercator (Navigational)
-  - Gall-Peters (Equal Area)
-  - Sinusoidal (Equal Area)
-  - Robinson (Pseudocylindrical)
-  - Infinite (Transverse)
-
-- **3D Visualizations:**
-  - Sphere
-  - Cylinder
-  - Cone
-  - Torus
-  - Disc
-
 ### 🌍 Map Layers
-- **CyclOSM** - Topographic cycling maps
 - **NASA Blue Marble** - High-resolution cloudless Earth imagery from NASA
 - **NASA VIIRS** - Daily updated satellite imagery from NASA EOSDIS
 - **OpenTopoMap** - Detailed topographic maps
-- **OSM Standard** - OpenStreetMap standard style
 - **Humanitarian** - HOT (Humanitarian OpenStreetMap Team) style
+- **OSM Standard** - OpenStreetMap standard style
 - **Carto Dark** - Dark theme cartography
+
+### 🗺️ 2D Projections
+- Standard (Plate Carrée)
+- Gall-Peters (Equal Area)
+- Mercator (Navigational)
+- Robinson (Pseudocylindrical)
+- Sinusoidal (Equal Area)
+- Infinite (Transverse)
+
+### 📦 3D Visualizations
+- Sphere
+- Disc World
+- Cone
+- Cylinder
+- Torus
 
 ### ✨ Visual Features
 - **Atmospheric Effects** - Subtle atmospheric glow on sphere projection with manual toggle
@@ -52,14 +50,13 @@ Link: https://arand4.github.io/Projection-lab/
 ## Credits
 
 ### Map Data
-- © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
-- [CyclOSM](https://www.cyclosm.org/)
-- [Humanitarian OSM Team](https://www.hotosm.org/)
-- [SRTM](https://www2.jpl.nasa.gov/srtm/)
-- [OpenTopoMap](https://opentopomap.org/)
-- [CARTO](https://carto.com/attributions)
 - [NASA Blue Marble](https://visibleearth.nasa.gov/collection/1484/blue-marble) - Imagery courtesy of NASA's Earth Observatory
 - [NASA EOSDIS GIBS](https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs) - VIIRS satellite imagery
+- [OpenTopoMap](https://opentopomap.org/)
+- [SRTM](https://www2.jpl.nasa.gov/srtm/)
+- [Humanitarian OSM Team](https://www.hotosm.org/)
+- © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+- [CARTO](https://carto.com/attributions)
 
 ## License
 

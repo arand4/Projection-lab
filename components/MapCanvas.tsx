@@ -11,7 +11,6 @@ interface MapCanvasProps {
 }
 
 const TILE_SERVERS: Record<MapLayer, { url: string; format: 'xyz' | 'tms' | 'static' }> = {
-  CYCLOSM: { url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm', format: 'xyz' },
   STANDARD: { url: 'https://tile.openstreetmap.org', format: 'xyz' },
   HOT: { url: 'https://a.tile.openstreetmap.fr/hot', format: 'xyz' },
   OPENTOPOMAP: { url: 'https://a.tile.opentopomap.org', format: 'xyz' },

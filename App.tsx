@@ -80,20 +80,19 @@ const App: React.FC = () => {
 
   const projections2D: { id: ViewMode; name: string; icon: any }[] = [
     { id: 'STANDARD', name: 'Standard (Plate Carrée)', icon: GridIcon },
-    { id: 'INFINITE', name: 'Infinite (Transverse)', icon: Zap },
+    { id: 'GALL_PETERS', name: 'Gall-Peters (Equal Area)', icon: MapIcon },
     { id: 'MERCATOR', name: 'Mercator (Navigational)', icon: Compass },
     { id: 'ROBINSON', name: 'Robinson (Pseudocylindrical)', icon: Earth },
-    { id: 'GALL_PETERS', name: 'Gall-Peters (Equal Area)', icon: MapIcon },
     { id: 'SINUSOIDAL', name: 'Sinusoidal (Equal Area)', icon: Triangle },
+    { id: 'INFINITE', name: 'Infinite (Transverse)', icon: Zap },
   ];
 
   const mapLayers: { id: MapLayer; name: string; icon: any; color: string }[] = [
-    { id: 'CYCLOSM', name: 'CyclOSM (Topo)', icon: Bike, color: 'text-emerald-400' },
     { id: 'BLUE_MARBLE', name: 'NASA Blue Marble', icon: Earth, color: 'text-cyan-400' },
     { id: 'NASA_VIIRS', name: 'NASA VIIRS', icon: Globe, color: 'text-purple-400' },
     { id: 'OPENTOPOMAP', name: 'OpenTopoMap', icon: Mountain, color: 'text-amber-400' },
-    { id: 'STANDARD', name: 'OSM Standard', icon: Navigation, color: 'text-blue-400' },
     { id: 'HOT', name: 'Humanitarian', icon: Heart, color: 'text-rose-400' },
+    { id: 'STANDARD', name: 'OSM Standard', icon: Navigation, color: 'text-blue-400' },
     { id: 'CARTODARK', name: 'Carto Dark', icon: Moon, color: 'text-indigo-400' },
   ];
 
@@ -159,21 +158,21 @@ const App: React.FC = () => {
                   <Globe size={20} className={isSphere ? 'animate-pulse' : ''} />
                   <span className="text-[8px] uppercase font-black tracking-widest">Sphere</span>
                 </button>
-                <button onClick={() => handle3DTransition('TORUS')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${isTorus ? 'bg-blue-600 text-white border-blue-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
-                  <Rotate3d size={20} className={isTorus ? 'animate-pulse' : ''} />
-                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Torus</span>
-                </button>
-                <button onClick={() => handle3DTransition('CYLINDER')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${isCylinder ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
-                  <CylinderIcon size={20} className={isCylinder ? 'animate-pulse' : ''} />
-                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Cylinder</span>
+                <button onClick={() => handle3DTransition('DISC')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${isDisc ? 'bg-rose-600 text-white border-rose-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
+                  <DiscIcon size={20} className={isDisc ? 'animate-pulse' : ''} />
+                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Disc World</span>
                 </button>
                 <button onClick={() => handle3DTransition('CONE')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${isCone ? 'bg-orange-600 text-white border-orange-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
                   <Pyramid size={20} className={isCone ? 'animate-pulse' : ''} />
                   <span className="text-[8px] uppercase font-black tracking-widest text-center">Cone</span>
                 </button>
-                <button onClick={() => handle3DTransition('DISC')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 col-span-2 ${isDisc ? 'bg-rose-600 text-white border-rose-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
-                  <DiscIcon size={20} className={isDisc ? 'animate-pulse' : ''} />
-                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Horizontal Disc World</span>
+                <button onClick={() => handle3DTransition('CYLINDER')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 ${isCylinder ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
+                  <CylinderIcon size={20} className={isCylinder ? 'animate-pulse' : ''} />
+                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Cylinder</span>
+                </button>
+                <button onClick={() => handle3DTransition('TORUS')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all duration-300 col-span-2 ${isTorus ? 'bg-blue-600 text-white border-blue-400' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
+                  <Rotate3d size={20} className={isTorus ? 'animate-pulse' : ''} />
+                  <span className="text-[8px] uppercase font-black tracking-widest text-center">Torus</span>
                 </button>
               </div>
             </div>

@@ -12,13 +12,6 @@ interface Attribution {
 }
 
 const ATTRIBUTIONS: Record<MapLayer, Attribution> = {
-  CYCLOSM: {
-    text: '© ',
-    links: [
-      { text: 'OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' },
-      { text: 'CyclOSM', url: 'https://www.cyclosm.org/' }
-    ]
-  },
   STANDARD: {
     text: '© ',
     links: [
